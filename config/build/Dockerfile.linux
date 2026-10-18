@@ -1,0 +1,7 @@
+# Build environment for `make build-linux`: Debian 13 (trixie), the production distro, so the binary
+# links the same libvips the box has. Only the toolchain lives here; the source is mounted at /src.
+FROM rust:1-trixie
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libvips-dev pkg-config cmake clang \
+    && rm -rf /var/lib/apt/lists/*

@@ -1,0 +1,7 @@
+/target/
+/tmp/
+/bin/server
+.env
+.DS_Store
+/.dboss/
+/bin/image-resizer-*

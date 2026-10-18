@@ -1,0 +1,295 @@
+<info>
+  <ul>
+    <li>Cache explorer: cached entries newest first, filtered by kind and source URL, 50 per page.</li>
+    <li>Props from the route: <code>page</code>, <code>kind</code> (<code>variant</code>, <code>source</code>, <code>step</code>), <code>url</code>.</li>
+    <li>Thumbnails come from <code>/admin/blob/{id}</code>, so browsing never triggers a resize; hover shows a larger preview with its size, click opens it.</li>
+  </ul>
+</info>
+
+<script>
+  const KINDS = [['', 'All'], ['variant', 'Variants'], ['source', 'Sources'], ['step', 'STEP']]
+
+  const PERIODS = [
+    ['1h', 'Added in the last hour', 'Delete everything cached in the last hour?'],
+    ['24h', 'Added in the last 24 h', 'Delete everything cached in the last 24 hours?'],
+    ['7d', 'Older than 7 days', 'Delete everything cached more than 7 days ago?'],
+  ]
+
+  class {
+    PROPS = {
+      page: { type: Number, default: 1 },
+      kind: { type: String, default: '' },
+      url: { type: String, default: '' },
+    }
+
+    init() {
+      this.state.kinds = KINDS
+      this.state.periods = PERIODS
+      this.state.loading = true
+      this.state.items = []
+      this.state.meta = { page: 1, total_pages: 1, total: 0 }
+    }
+
+    onRefresh(props, changed) {
+      if (this.state.search) this.state.search.value = props.url || ''
+      if ('page' in changed || 'kind' in changed || 'url' in changed) this.load()
+    }
+
+    async load() {
+      const { page, kind, url } = this.props
+      try {
+        const envelope = await App.api('cache/list', { page, kind, url }, { envelope: true })
+        this.state.items = envelope.data.map((item) => ({
+          ...item,
+          image: item.content_type.startsWith('image/'),
+          blob: `/admin/blob/${item.id}`,
+          size_text: Fmt.bytes(item.size),
+          age: Fmt.ago(item.created_at),
+          when: Fmt.date(item.created_at),
+        }))
+        this.state.meta = envelope.meta
+      } finally {
+        this.state.loading = false
+      }
+    }
+
+    beforeRender() {
+      const { page, total_pages } = this.state.meta
+      this.state.prev = page > 1 ? App.href('cache', { ...this.query(), page: page - 1 }) : ''
+      this.state.next = page < total_pages ? App.href('cache', { ...this.query(), page: page + 1 }) : ''
+    }
+
+    query() {
+      return { kind: this.props.kind, url: this.props.url }
+    }
+
+    setKind(kind) {
+      App.go('cache', { kind, url: this.props.url })
+    }
+
+    search() {
+      App.go('cache', { kind: this.props.kind, url: this.state.search.value.trim() })
+    }
+
+    async remove(id) {
+      await App.api('cache/delete', { id })
+      this.state.items = this.state.items.filter((item) => item.id !== id)
+      this.state.meta = { ...this.state.meta, total: this.state.meta.total - 1 }
+    }
+
+    async clear(period, question) {
+      const ok = await Dialog.confirm({ title: question, text: 'Deleted images are fetched and resized again on their next request.', confirm: 'Delete', danger: true })
+      if (!ok) return
+      const { deleted } = await App.api('cache/clear', { period })
+      Toast.success(`${Fmt.number(deleted)} cached images removed`)
+      this.load()
+    }
+
+    peek(event, src) {
+      const img = this.state.hover
+      img.src = src
+      img.style.display = 'block'
+      this.move(event)
+    }
+
+    move(event) {
+      const img = this.state.hover
+      let x = event.clientX + 16
+      let y = event.clientY + 16
+      if (x + 520 > window.innerWidth) x = Math.max(8, event.clientX - 520)
+      if (y + 520 > window.innerHeight) y = Math.max(8, event.clientY - 520)
+      img.style.left = `${x}px`
+      img.style.top = `${y}px`
+    }
+
+    unpeek() {
+      this.state.hover.style.display = 'none'
+      this.state.hover.removeAttribute('src')
+    }
+
+    hoverLoaded() {
+      const img = this.state.hover
+      img.title = `${img.naturalWidth} x ${img.naturalHeight}`
+    }
+  }
+</script>
+
+<style>
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-5);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .search {
+    width: 280px;
+
+    @media (max-width: 640px) {
+      width: 100%;
+    }
+  }
+
+  .thumb-cell {
+    width: 64px;
+  }
+
+  .thumb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-subtle);
+    cursor: zoom-in;
+
+    .thumb-img {
+      display: block;
+      max-width: 100%;
+      max-height: 100%;
+    }
+  }
+
+  .url {
+    max-width: 420px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .source-row td {
+    background: var(--color-warning-soft);
+  }
+
+  .pager {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-5);
+    border-top: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+  }
+
+  .clears {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+  }
+
+  .hover {
+    position: fixed;
+    z-index: var(--z-popover);
+    display: none;
+    max-width: 500px;
+    max-height: 500px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-raised);
+    box-shadow: var(--shadow-lg);
+    pointer-events: none;
+  }
+</style>
+
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1>Cache</h1>
+      <p class="sub">{Fmt.number(state.meta.total)} cached entries. Sources are what variants are cut from; they expire after a day.</p>
+    </div>
+    <div class="actions">
+      <button class="btn" type="button" onclick="fez.load()"><ui-icon name="arrows-clockwise" size="16"></ui-icon>Refresh</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <div class="filters">
+        <div class="segmented" role="group" aria-label="Kind">
+          {#each state.kinds as kind}
+            <button type="button" class:on={props.kind === kind[0]} onclick="fez.setKind('{kind[0]}')">{kind[1]}</button>
+          {/each}
+        </div>
+      </div>
+      <input class="input search" fez:this="search" type="search" placeholder="Filter by source URL, press Enter" onkeydown="if (event.key === 'Enter') fez.search()">
+    </div>
+
+    {#if state.loading}
+      <div class="center"><span class="spinner"></span></div>
+    {:else if state.items.length}
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr><th></th><th>Source URL</th><th>Key</th><th>Format</th><th class="num">Size</th><th>Cached</th><th class="shrink"></th></tr>
+          </thead>
+          <tbody>
+            {#each state.items as item (item.id)}
+              <tr class:source-row={item.kind !== 'variant'}>
+                <td class="thumb-cell">
+                  <a class="thumb checker" href={item.blob} target="_blank" rel="noopener" onmouseenter={(e) => peek(e, item.blob)} onmousemove="fez.move(event)" onmouseleave="fez.unpeek()">
+                    {#if item.image}
+                      <img class="thumb-img" src={item.blob} alt="" loading="lazy">
+                    {:else}
+                      <ui-icon name="cube" size="22"></ui-icon>
+                    {/if}
+                  </a>
+                </td>
+                <td><div class="url"><a href={item.url} target="_blank" rel="noopener" title={item.url}>{item.url}</a></div></td>
+                <td><span class="badge mono {item.kind === 'variant' ? '' : 'warning'}">{item.key}</span></td>
+                <td><span class="badge accent">{item.format}</span></td>
+                <td class="num">{item.size_text}</td>
+                <td class="muted" title={item.when}>{item.age}</td>
+                <td class="shrink"><button class="btn sm icon danger-ghost" type="button" title="Delete" onclick="fez.remove({item.id})"><ui-icon name="trash" size="16"></ui-icon></button></td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+      <div class="pager">
+        {#if state.prev}
+          <a class="btn sm" href={state.prev}><ui-icon name="caret-left" size="14"></ui-icon>Prev</a>
+        {:else}
+          <button class="btn sm" type="button" disabled><ui-icon name="caret-left" size="14"></ui-icon>Prev</button>
+        {/if}
+        <span>Page {state.meta.page} of {state.meta.total_pages}</span>
+        {#if state.next}
+          <a class="btn sm" href={state.next}>Next<ui-icon name="caret-right" size="14"></ui-icon></a>
+        {:else}
+          <button class="btn sm" type="button" disabled>Next<ui-icon name="caret-right" size="14"></ui-icon></button>
+        {/if}
+      </div>
+    {:else}
+      <div class="empty">
+        <strong>{props.kind || props.url ? 'Nothing matches' : 'Cache is empty'}</strong>
+        <span>{props.kind || props.url ? 'Try another filter.' : 'Images appear here as they are resized and cached.'}</span>
+      </div>
+    {/if}
+  </div>
+
+  <div class="clears">
+    <span>Clear:</span>
+    {#each state.periods as period}
+      <button class="btn sm" type="button" onclick="fez.clear('{period[0]}', '{period[2]}')">{period[1]}</button>
+    {/each}
+  </div>
+
+  <img class="hover checker" fez:this="hover" alt="" onload="fez.hoverLoaded()">
+</div>

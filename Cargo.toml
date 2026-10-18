@@ -1,0 +1,65 @@
+[package]
+name = "image-resizer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+arc-swap = "1.9.3"
+axum = { version = "0.8", features = ["ws", "macros"] }
+base64 = "0.23.1"
+blake3 = "1.8.7"
+bytes = "1.12.1"
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+clap = { version = "4.6.7", features = ["derive"] }
+dashmap = "6.2.1"
+dotenvy = "0.15.7"
+futures-util = "0.3.34"
+hex = "0.4.3"
+hmac = "0.13.0"
+moka = { version = "0.12.16", features = ["sync"] }
+parking_lot = "0.12.5"
+percent-encoding = "2.3.2"
+r2d2 = "0.8.10"
+r2d2_sqlite = "0.35.0"
+rand = "0.10.3"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "stream"] }
+rs-vips = "0.7"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+schemars = "1.2.3"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_html_form = "0.4.1"
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+subtle = "2.6.1"
+tempfile = "3.27.0"
+tokio = { version = "1.53.3", features = ["full"] }
+tokio-util = { version = "0.7.20", features = ["io"] }
+tower = { version = "0.5.3", features = ["util"] }
+tower-http = { version = "0.7.1", features = ["fs", "trace", "set-header"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["chrono", "env-filter"] }
+url = "2.5.8"
+
+[build-dependencies]
+pkg-config = "0.3.34"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+too_many_lines = "allow"
+unused_async_trait_impl = "allow"
+
+[profile.dev.package."*"]
+opt-level = 1
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

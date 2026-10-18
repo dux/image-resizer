@@ -1,0 +1,134 @@
+<info>
+  <ul>
+    <li>Toast stack, mounted once as <code>window.Toast</code>: <code>Toast.success(text)</code>, <code>Toast.info(text)</code>, <code>Toast.error(text)</code>.</li>
+    <li>Success and info leave after 4 seconds, errors after 8; hovering keeps them.</li>
+  </ul>
+</info>
+
+<script>
+  const TONES = {
+    success: { icon: 'check-circle', ms: 4000 },
+    info: { icon: 'info', ms: 4000 },
+    error: { icon: 'warning-circle', ms: 8000 },
+  }
+
+  class {
+    MOUNT = true
+    GLOBAL = 'Toast'
+
+    init() {
+      this.state.items = []
+      this.state.seq = 0
+      this.state.hovered = false
+    }
+
+    show(text, tone = 'info') {
+      const id = ++this.state.seq
+      const spec = TONES[tone] || TONES.info
+      this.state.items = [...this.state.items.slice(-3), { id, tone, text, icon: spec.icon }]
+      this.setTimeout(() => this.expire(id), spec.ms)
+      return id
+    }
+
+    success(text) {
+      return this.show(text, 'success')
+    }
+
+    info(text) {
+      return this.show(text, 'info')
+    }
+
+    error(text) {
+      return this.show(text, 'error')
+    }
+
+    expire(id) {
+      if (this.state.hovered) {
+        this.setTimeout(() => this.expire(id), 1500)
+        return
+      }
+      this.dismiss(id)
+    }
+
+    dismiss(id) {
+      this.state.items = this.state.items.filter((item) => item.id !== id)
+    }
+
+    hover(on) {
+      this.state.hovered = on
+    }
+  }
+</script>
+
+<style>
+  display: contents;
+
+  .stack {
+    position: fixed;
+    left: 50%;
+    bottom: var(--space-6);
+    z-index: var(--z-toast);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    width: max-content;
+    max-width: calc(100vw - var(--space-8));
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+
+  .toast {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: 44px;
+    max-width: 520px;
+    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-raised);
+    color: var(--color-text);
+    box-shadow: var(--shadow-lg);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    pointer-events: auto;
+  }
+
+  .success .tone { color: var(--color-success); }
+  .info .tone { color: var(--color-accent); }
+  .error .tone { color: var(--color-danger); }
+
+  .tone {
+    display: inline-flex;
+  }
+
+  .text {
+    flex: 1;
+  }
+
+  .close {
+    display: inline-flex;
+    padding: 6px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-subtle);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--color-bg-hover);
+      color: var(--color-text);
+    }
+  }
+</style>
+
+<div class="stack" role="status" aria-live="polite" onmouseenter="fez.hover(true)" onmouseleave="fez.hover(false)">
+  {#each state.items as item}
+    <div class="toast {item.tone}" key="toast-{item.id}" fez:in="fly, y=16, duration=220" fez:out="fade, duration=160">
+      <span class="tone"><ui-icon name={item.icon} size="18" weight="fill"></ui-icon></span>
+      <span class="text">{item.text}</span>
+      <button class="close" type="button" aria-label="Dismiss" onclick="fez.dismiss({item.id})"><ui-icon name="x" size="14"></ui-icon></button>
+    </div>
+  {/each}
+</div>

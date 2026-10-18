@@ -1,0 +1,44 @@
+#!/bin/sh
+# STEP -> GLB (three.js-ready binary glTF) via OpenCascade DRAWEXE.
+#
+#   usage: step2glb input.step output.glb
+#
+# Install DRAWEXE:
+#   macOS:  brew install opencascade
+#   Debian: apt install occt-draw
+#
+# Tessellation: 1% relative linear deflection, 14 deg angular; faces merged
+# into a single primitive so three.js gets one draw call per model.
+set -e
+
+in="$1"
+out="$2"
+[ -n "$in" ] && [ -n "$out" ] || { echo "usage: step2glb input.step output.glb" >&2; exit 1; }
+[ -f "$in" ] || { echo "step2glb: input not found: $in" >&2; exit 1; }
+
+# DRAWEXE on brew/self-built installs, occt-draw on Debian/Ubuntu
+if [ -z "$DRAWEXE_BIN" ]; then
+    for cand in DRAWEXE occt-draw; do
+        if command -v "$cand" >/dev/null 2>&1; then
+            DRAWEXE_BIN=$cand
+            break
+        fi
+    done
+fi
+[ -n "$DRAWEXE_BIN" ] || { echo "step2glb: DRAWEXE not found (brew install opencascade / apt install occt-draw)" >&2; exit 1; }
+
+script=$(mktemp -t step2glb.XXXXXX)
+trap 'rm -f "$script"' EXIT
+
+cat > "$script" <<EOF
+pload XDE MODELING
+ReadStep D {$in}
+XGetOneShape s D
+incmesh s 0.01 -relative -a 14
+WriteGltf D {$out} -mergefaces
+exit
+EOF
+
+"$DRAWEXE_BIN" -b -f "$script"
+
+[ -s "$out" ] || { echo "step2glb: no output produced" >&2; exit 1; }

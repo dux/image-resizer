@@ -1,0 +1,185 @@
+<info>
+  <ul>
+    <li>Demo: one source image (prop <code>src</code> from <code>#/demo?src=...</code>) shown at several widths, crops and heights.</li>
+    <li>Without <code>src</code> it asks <code>demo/random</code> for a reachable sample and replaces the route.</li>
+  </ul>
+</info>
+
+<script>
+  const GROUPS = [
+    { title: 'Width', items: [['Width 100', 'w100'], ['Width 200', 'w200'], ['Width 300', 'w300']] },
+    { title: 'Crop', items: [['300x300 crop', 'c300'], ['300x200 crop', 'c300x200'], ['200x300 crop', 'c200x300']] },
+    { title: 'Height', items: [['Height 300', 'h300'], ['Height 200', 'h200'], ['Height 100', 'h100']] },
+  ]
+
+  class {
+    PROPS = {
+      src: String,
+    }
+
+    init() {
+      this.state.groups = GROUPS
+      this.state.picking = false
+      this.state.originalLoaded = false
+    }
+
+    onRefresh(props, changed) {
+      if (!('src' in changed)) return
+      this.state.originalLoaded = false
+      if (this.state.input) this.state.input.value = props.src || ''
+      if (!props.src) this.random({ replace: true })
+    }
+
+    async random({ replace = false } = {}) {
+      this.state.picking = true
+      try {
+        const { url } = await App.api('demo/random')
+        App.go('demo', { src: url }, { replace })
+      } finally {
+        this.state.picking = false
+      }
+    }
+
+    load() {
+      const src = this.state.input.value.trim()
+      if (src) App.go('demo', { src })
+    }
+
+    originalShown() {
+      this.state.originalLoaded = true
+    }
+  }
+</script>
+
+<style>
+  .source {
+    display: grid;
+    align-items: start;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: var(--space-5);
+    margin-bottom: var(--space-8);
+
+    @media (max-width: 760px) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .form {
+    display: grid;
+    align-content: start;
+    gap: var(--space-3);
+    padding: var(--space-5);
+  }
+
+  .current {
+    overflow: hidden;
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .original {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
+  }
+
+  .original-frame {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 160px;
+    overflow: hidden;
+    border-radius: var(--radius-md);
+
+    .original-img {
+      display: block;
+      max-width: 100%;
+      max-height: 260px;
+      opacity: 0;
+      transition: opacity 0.3s var(--ease);
+
+      &.on {
+        opacity: 1;
+      }
+    }
+
+    .wait {
+      position: absolute;
+    }
+  }
+
+  .group {
+    margin-bottom: var(--space-6);
+
+    h2 {
+      margin-bottom: var(--space-3);
+      font-size: var(--text-md);
+    }
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    align-items: start;
+    gap: var(--space-4);
+  }
+</style>
+
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1>Demo</h1>
+      <p class="sub">One source image through the resize modes. Click a result to open its URL.</p>
+    </div>
+  </div>
+
+  <section class="source">
+    <div class="card form">
+      <div class="field">
+        <label for="demo-src">Image URL</label>
+        <input class="input" id="demo-src" fez:this="input" placeholder="https://example.com/image.jpg" onkeydown="if (event.key === 'Enter') fez.load()">
+      </div>
+      <div class="actions">
+        <button class="btn primary" type="button" onclick="fez.load()">Load image</button>
+        <button class="btn" type="button" onclick="fez.random()" disabled={state.picking}>
+          {#if state.picking}
+            <span class="spinner sm"></span>
+          {:else}
+            <ui-icon name="shuffle" size="16"></ui-icon>
+          {/if}
+          Random image
+        </button>
+      </div>
+      {#if props.src}
+        <p class="current">Source: <a href={props.src} target="_blank" rel="noopener">{props.src}</a></p>
+      {/if}
+    </div>
+    <div class="card original">
+      <div class="card-title small">Original</div>
+      <div class="original-frame checker">
+        {#if props.src}
+          {#if !state.originalLoaded}
+            <span class="spinner wait"></span>
+          {/if}
+          <img class="original-img" class:on={state.originalLoaded} src={props.src} alt="Original" onload="fez.originalShown()" onerror="fez.originalShown()">
+        {/if}
+      </div>
+    </div>
+  </section>
+
+  {#if props.src}
+    {#each state.groups as group}
+      <section class="group">
+        <h2>{group.title}</h2>
+        <div class="grid">
+          {#each group.items as item}
+            <img-preview title={item[0]} attr={item[1]} src={props.src}></img-preview>
+          {/each}
+        </div>
+      </section>
+    {/each}
+  {/if}
+</div>

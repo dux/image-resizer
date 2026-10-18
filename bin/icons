@@ -1,0 +1,55 @@
+#!/usr/bin/env bun
+// Writes web/lib/icons.js with exactly the Phosphor icons the components use (regular + fill).
+// Names come from `<ui-icon name="x">`, quoted strings inside `name={...}`, and `icon: 'x'` values.
+//   bin/icons          fetch the SVGs from unpkg and rewrite web/lib/icons.js
+//   bin/icons --check  offline: fail when a used name is missing from icons.js or an unused one is in it
+import { readFileSync, writeFileSync } from 'node:fs'
+import { Glob } from 'bun'
+
+const root = new URL('..', import.meta.url).pathname
+const out = `${root}web/lib/icons.js`
+const cdn = 'https://unpkg.com/@phosphor-icons/core@2.1.1/assets'
+
+const names = new Set()
+for (const file of new Glob('web/**/*.{fez,js}').scanSync(root)) {
+  if (file.endsWith('lib/icons.js')) continue
+  const src = readFileSync(`${root}${file}`, 'utf8')
+  for (const m of src.matchAll(/<ui-icon[^>]*\sname="([a-z0-9-]+)"/g)) names.add(m[1])
+  for (const m of src.matchAll(/<ui-icon[^>]*\sname=\{([^}]*)\}/g)) {
+    for (const q of m[1].matchAll(/'([a-z0-9-]+)'/g)) names.add(q[1])
+  }
+  for (const m of src.matchAll(/\bicon:\s*'([a-z0-9-]+)'/g)) names.add(m[1])
+}
+const used = [...names].sort()
+
+if (process.argv.includes('--check')) {
+  const have = new Set([...readFileSync(out, 'utf8').matchAll(/^ {2}"([a-z0-9-]+)":/gm)].map((m) => m[1].replace(/-fill$/, '')))
+  const missing = used.filter((n) => !have.has(n))
+  const unused = [...have].filter((n) => !names.has(n))
+  if (missing.length || unused.length) {
+    if (missing.length) console.error(`icons missing from web/lib/icons.js: ${missing.join(', ')}`)
+    if (unused.length) console.error(`icons no longer used: ${unused.join(', ')}`)
+    console.error('run bin/icons')
+    process.exit(1)
+  }
+  process.exit(0)
+}
+
+const lines = ['// Phosphor icons (MIT, phosphoricons.com) used by ui-icon; regenerate with bin/icons.', 'window.ICONS = {']
+for (const name of used) {
+  for (const [weight, suffix] of [['regular', ''], ['fill', '-fill']]) {
+    const res = await fetch(`${cdn}/${weight}/${name}${suffix}.svg`)
+    if (!res.ok) {
+      if (weight === 'regular') {
+        console.error(`unknown icon: ${name}`)
+        process.exit(1)
+      }
+      continue
+    }
+    const svg = (await res.text()).trim().replace(' xmlns="http://www.w3.org/2000/svg"', '')
+    lines.push(`  ${JSON.stringify(name + suffix)}: ${JSON.stringify(svg)},`)
+  }
+}
+lines.push('}')
+writeFileSync(out, `${lines.join('\n')}\n`)
+console.log(`${used.length} icons written to web/lib/icons.js`)

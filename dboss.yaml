@@ -1,0 +1,30 @@
+# One file, both sessions. `dboss s` in this folder runs the dev server; the same file is the app
+# config lux-deploy ships to the box. A _dev key replaces its base key in a dev session and is
+# dropped in every other one.
+#
+# The binary is built on the box by config/deploy/remote_before.sh: libvips links through
+# pkg-config, so there is no cross-build.
+
+procfile:
+  web:
+    command: exec ./bin/server start
+    command_dev: exec watchexec --restart --watch src --watch Cargo.toml --exts rs,toml -- cargo run -- start
+    host: [img.sohospot.com, resizer.sohotasks.com]
+    host_dev: ['.lvh.me']
+    # served from memory: no cache, no fetch, no auth
+    health: /favicon.ico
+
+# a _dev key replaces only its own base key, so one env block serves both sessions
+env:
+  APP_ENV: production
+  APP_ENV_dev: development
+  APP_HOSTS: img.sohospot.com,resizer.sohotasks.com
+  ADMIN_EMAILS: rejotl@gmail.com
+  MAX_CACHE_SIZE: 500
+
+# the first cargo build of a fresh checkout takes minutes
+health_timeout_dev: 10m
+
+# The cache lives in ./tmp (cache.db, blobs/, session.key). Its files can go untouched for weeks,
+# so dboss's age-based tmp sweep would delete live cache data and sign every admin out.
+tmp_clean: false

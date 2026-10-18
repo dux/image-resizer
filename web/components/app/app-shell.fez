@@ -1,0 +1,416 @@
+<info>
+  <ul>
+    <li>App root, exposed as <code>window.App</code>: top bar, hash router and API client.</li>
+    <li>Routes are <code>#/&lt;page&gt;?k=v</code>; the page is <code>tpl-&lt;page&gt;</code>, mounted through <code>&lt;fez-component&gt;</code> with the query as props. The <code>/api</code> path renders <code>api-explorer</code>. A plain <code>#anchor</code> is not a route.</li>
+    <li>The page sits in a <code>.pjax</code> container: path links (<code>/api</code>, <code>/#/demo</code>) go through <code>Fez.pjax</code>, which keeps this instance, so the location is re-read on <code>pjax:render</code> as well as on <code>hashchange</code>.</li>
+    <li><code>await App.api('cache/list', { page: 2 })</code> returns <code>data</code>; <code>{ envelope: true }</code> returns the whole envelope (for <code>meta</code>). Errors throw and toast unless <code>{ silent: true }</code>; <code>unauthorized</code> drops the admin session.</li>
+    <li><code>App.go(page, query)</code>, <code>App.href(page, query)</code>, <code>App.signIn()</code>, <code>App.signOut()</code>.</li>
+  </ul>
+</info>
+
+<script>
+  const PAGES = {
+    home: { label: 'Home', icon: 'house' },
+    demo: { label: 'Demo', icon: 'flask' },
+    config: { label: 'Config', icon: 'gear', admin: true },
+    cache: { label: 'Cache', icon: 'database', admin: true },
+    logs: { label: 'Logs', icon: 'terminal-window', admin: true },
+    keys: { label: 'Keys', icon: 'key', admin: true },
+  }
+
+  const LOGIN_ERRORS = {
+    expired: 'That sign-in link expired. Please try again.',
+    unavailable: 'The sign-in service is not reachable right now. Please try again in a moment.',
+    no_access: 'This account is not an admin here.',
+  }
+
+  const THEMES = { system: { icon: 'monitor' }, light: { icon: 'sun' }, dark: { icon: 'moon' } }
+
+  const LOGO = '<svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#2563eb"/><path d="M8 10h3l2-2h6l2 2h3c1.1 0 2 .9 2 2v10c0 1.1-.9 2-2 2H8c-1.1 0-2-.9-2-2V12c0-1.1.9-2 2-2z" fill="#fff"/><circle cx="16" cy="17" r="4" fill="#2563eb"/><circle cx="16" cy="17" r="2" fill="#fff"/></svg>'
+
+  /** `#/page?k=v` -> { page, query }; `null` for an in-page anchor such as `#builder`. */
+  function parseRoute(hash) {
+    if (hash && hash !== '#' && !hash.startsWith('#/')) return null
+    const raw = (hash || '').replace(/^#\/?/, '')
+    const [path, query = ''] = raw.split('?')
+    return { page: path.split('/').filter(Boolean)[0] || 'home', query: Object.fromEntries(new URLSearchParams(query)) }
+  }
+
+  class {
+    GLOBAL = 'App'
+
+    init() {
+      this.state.logo = LOGO
+      this.state.route = { page: 'home', query: {} }
+      this.sync()
+      this.state.ready = false
+      this.state.theme = window.Theme ? Theme.choice() : 'system'
+      this.globalState.me = null
+      this.on(window, 'hashchange', () => this.sync({ scroll: true }))
+      this.on(document, 'pjax:render', () => this.sync({ scroll: true }))
+      this.subscribe('theme-changed', (choice) => (this.state.theme = choice))
+
+      const loginError = new URLSearchParams(window.location.search).get('login_error')
+      if (loginError) {
+        window.history.replaceState(null, '', window.location.pathname + window.location.hash)
+        this.setTimeout(() => Toast.error(LOGIN_ERRORS[loginError] || 'Sign-in failed.'), 50)
+      }
+      this.boot()
+    }
+
+    async boot() {
+      try {
+        this.globalState.me = await this.api('auth/me', {}, { silent: true })
+      } catch {
+        this.globalState.me = { email: null, is_admin: false, dev_login: false }
+      }
+      this.state.ready = true
+    }
+
+    /** Reads path and hash; an in-page anchor keeps the current page. */
+    sync({ scroll = false } = {}) {
+      this.state.explorer = window.location.pathname.replace(/\/+$/, '') === '/api'
+      const route = parseRoute(window.location.hash)
+      if (!route) return
+      this.state.route = route
+      if (scroll) window.scrollTo(0, 0)
+    }
+
+    beforeRender() {
+      const me = this.globalState.me || {}
+      const page = this.state.explorer ? 'api' : this.state.route.page
+      const admin = Boolean(me.is_admin)
+      this.state.links = Object.entries(PAGES)
+        .filter(([, spec]) => !spec.admin || admin)
+        .map(([name, spec]) => ({ ...spec, href: this.state.explorer ? `/#/${name}` : `#/${name}`, on: page === name }))
+      if (admin) this.state.links.push({ label: 'API', icon: 'code', href: '/api', on: page === 'api' })
+
+      const spec = PAGES[page]
+      this.state.view = this.state.explorer ? 'explorer' : !spec ? 'missing' : spec.admin && !admin ? 'signin' : 'page'
+      this.state.component = `tpl-${page}`
+      this.state.themeIcon = (THEMES[this.state.theme] || THEMES.system).icon
+      this.state.isAdmin = admin
+      this.state.email = me.email || ''
+      this.state.devLogin = Boolean(me.dev_login)
+    }
+
+    /** POST /api/<path>; returns `data` (or the envelope), throws on failure. */
+    async api(path, params = {}, { silent = false, envelope = false } = {}) {
+      let body
+      try {
+        const response = await fetch(`/api/${path}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(params),
+          credentials: 'same-origin',
+        })
+        body = await response.json()
+      } catch (cause) {
+        body = { success: false, status: 0, error: { code: 'network', message: 'The server is not reachable.' } }
+      }
+      if (!body.success) {
+        const error = new Error(body.error?.message || 'Request failed.')
+        error.code = body.error?.code
+        error.status = body.status
+        if (error.code === 'unauthorized' && this.globalState.me?.is_admin) {
+          this.globalState.me = { ...this.globalState.me, email: null, is_admin: false }
+        }
+        if (!silent) Toast.error(error.message)
+        throw error
+      }
+      return envelope ? body : body.data
+    }
+
+    href(page, query = {}) {
+      const params = new URLSearchParams(Object.entries(query).filter(([, v]) => v !== undefined && v !== null && v !== ''))
+      const qs = params.toString()
+      return `#/${page}${qs ? `?${qs}` : ''}`
+    }
+
+    go(page, query = {}, { replace = false } = {}) {
+      const target = this.href(page, query)
+      if (this.state.explorer) {
+        window.location.href = `/${target}`
+      } else if (replace) {
+        window.history.replaceState(null, '', target)
+        this.sync()
+      } else {
+        window.location.hash = target
+      }
+    }
+
+    signIn() {
+      const back = window.location.pathname + window.location.hash
+      window.location.href = `/login?redirect_to=${encodeURIComponent(back)}`
+    }
+
+    async signOut() {
+      try {
+        await this.api('auth/logout')
+      } finally {
+        this.globalState.me = { email: null, is_admin: false, dev_login: this.state.devLogin }
+        Toast.info('Signed out')
+      }
+    }
+
+    devLogin() {
+      const email = this.state.devEmail?.value.trim()
+      if (!email) return
+      const back = window.location.pathname + window.location.hash
+      window.location.href = `/dev/login?email=${encodeURIComponent(email)}&redirect_to=${encodeURIComponent(back)}`
+    }
+
+    cycleTheme() {
+      this.state.theme = Theme.next()
+    }
+  }
+</script>
+
+<style>
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+
+  .shell-top {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+    background: var(--color-nav-bg);
+    color: var(--color-nav-text);
+  }
+
+  .shell-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    max-width: var(--page-width);
+    height: var(--nav-height);
+    margin: 0 auto;
+    padding: 0 var(--space-6);
+
+    @media (max-width: 640px) {
+      gap: var(--space-2);
+      padding: 0 var(--space-3);
+    }
+  }
+
+  .shell-brand {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--color-nav-text-strong);
+    font-weight: var(--weight-bold);
+    letter-spacing: -0.01em;
+
+    &:hover {
+      text-decoration: none;
+    }
+
+    .logo {
+      display: inline-flex;
+      width: 28px;
+      height: 28px;
+    }
+
+    .name {
+      @media (max-width: 760px) {
+        display: none;
+      }
+    }
+  }
+
+  .shell-links {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .shell-link {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 var(--space-3);
+    border-radius: var(--radius-md);
+    color: var(--color-nav-text);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+
+    &:hover {
+      background: var(--color-nav-hover);
+      color: var(--color-nav-text-strong);
+      text-decoration: none;
+    }
+
+    &.on {
+      background: var(--color-nav-active);
+      color: var(--color-nav-text-strong);
+    }
+
+    @media (max-width: 640px) {
+      padding: 0 var(--space-2);
+    }
+
+    .label {
+      @media (max-width: 900px) {
+        display: none;
+      }
+    }
+  }
+
+  .shell-right {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .shell-who {
+    max-width: 200px;
+    overflow: hidden;
+    color: var(--color-nav-text);
+    font-size: var(--text-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    @media (max-width: 1000px) {
+      display: none;
+    }
+  }
+
+  .shell-btn {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-nav-text);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--color-nav-hover);
+      color: var(--color-nav-text-strong);
+    }
+  }
+
+  .shell-main {
+    flex: 1;
+  }
+
+  .shell-gate {
+    display: grid;
+    justify-items: center;
+    gap: var(--space-4);
+    max-width: 420px;
+    margin: 12vh auto 0;
+    padding: var(--space-8);
+    text-align: center;
+
+    h1 {
+      font-size: var(--text-lg);
+    }
+
+    .shell-lock {
+      display: inline-flex;
+      padding: var(--space-3);
+      border-radius: var(--radius-full);
+      background: var(--color-accent-soft);
+      color: var(--color-accent);
+    }
+  }
+
+  .shell-dev {
+    display: flex;
+    gap: var(--space-2);
+    width: 100%;
+    padding-top: var(--space-4);
+    border-top: 1px dashed var(--color-border-strong);
+  }
+
+  .shell-foot {
+    padding: var(--space-6);
+    color: var(--color-text-subtle);
+    font-size: var(--text-xs);
+    text-align: center;
+  }
+</style>
+
+<header class="shell-top">
+  <div class="shell-bar">
+    <a class="shell-brand" href={state.explorer ? '/#/' : '#/'}>
+      <span class="logo">{@html state.logo}</span>
+      <span class="name">Image Resizer</span>
+    </a>
+    <nav class="shell-links">
+      {#each state.links as link}
+        <a class="shell-link" class:on={link.on} href={link.href} title={link.label}>
+          <ui-icon name={link.icon} size="16"></ui-icon>
+          <span class="label">{link.label}</span>
+        </a>
+      {/each}
+    </nav>
+    <div class="shell-right">
+      <button class="shell-btn" type="button" title="Theme: {state.theme}" onclick="fez.cycleTheme()">
+        <ui-icon name={state.themeIcon} size="18"></ui-icon>
+      </button>
+      {#if state.isAdmin}
+        <span class="shell-who" title={state.email}>{state.email}</span>
+        <button class="shell-btn" type="button" title="Sign out" onclick="fez.signOut()">
+          <ui-icon name="sign-out" size="18"></ui-icon>
+        </button>
+      {:else if state.ready}
+        <button class="btn primary sm" type="button" onclick="fez.signIn()">Sign in</button>
+      {/if}
+    </div>
+  </div>
+</header>
+
+<main class="shell-main">
+  {#if !state.ready}
+    <div class="center"><span class="spinner"></span></div>
+  {:else if state.view === 'explorer'}
+    <api-explorer></api-explorer>
+  {:else if state.view === 'missing'}
+    <div class="page">
+      <div class="card empty">
+        <strong>Page not found</strong>
+        <span>There is no page at this address.</span>
+        <a class="btn" href="#/">Go home</a>
+      </div>
+    </div>
+  {:else if state.view === 'signin'}
+    <div class="card shell-gate">
+      <span class="shell-lock"><ui-icon name="lock-simple" size="28"></ui-icon></span>
+      <h1>Admins only</h1>
+      <p class="muted small">Sign in with your AuthCog account to manage the cache, referers and API keys.</p>
+      <button class="btn primary" type="button" onclick="fez.signIn()">
+        <ui-icon name="sign-in" size="16"></ui-icon>
+        Sign in with AuthCog
+      </button>
+      {#if state.devLogin}
+        <div class="shell-dev">
+          <input class="input" fez:this="devEmail" type="email" placeholder="Dev login: admin email" onkeydown="if (event.key === 'Enter') fez.devLogin()">
+          <button class="btn" type="button" onclick="fez.devLogin()">Go</button>
+        </div>
+      {/if}
+    </div>
+  {:else}
+    <fez-component name={state.component} :props="state.route.query">
+      <div class="center"><span class="spinner"></span></div>
+    </fez-component>
+  {/if}
+</main>
+
+<footer class="shell-foot">
+  Image Resizer by <a href="https://twitter.com/dux">@dux</a>
+</footer>

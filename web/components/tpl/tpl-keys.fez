@@ -1,0 +1,185 @@
+<info>
+  <ul>
+    <li>API keys for scripts: list, create (read-only or read-write) and delete.</li>
+    <li>A new token is shown once, with a curl example; only its hash is stored.</li>
+  </ul>
+</info>
+
+<script>
+  class {
+    init() {
+      this.state.loading = true
+      this.state.keys = []
+      this.state.created = null
+      this.state.saving = false
+      this.state.readOnly = true
+      this.state.origin = window.location.origin
+    }
+
+    onMount() {
+      this.load()
+    }
+
+    async load() {
+      try {
+        const keys = await App.api('key/list')
+        this.state.keys = keys.map((k) => ({ ...k, created: Fmt.ago(k.created_at), used: Fmt.ago(k.last_used_at), when: Fmt.date(k.created_at) }))
+      } finally {
+        this.state.loading = false
+      }
+    }
+
+    setReadOnly(value) {
+      this.state.readOnly = value
+    }
+
+    async create() {
+      const name = this.state.name.value.trim()
+      if (!name) {
+        Toast.error('Give the key a name, e.g. the script that uses it.')
+        this.state.name.focus()
+        return
+      }
+      this.state.saving = true
+      try {
+        this.state.created = await App.api('key/create', { name, read_only: this.state.readOnly })
+        this.state.name.value = ''
+        this.load()
+      } finally {
+        this.state.saving = false
+      }
+    }
+
+    async copy() {
+      await navigator.clipboard.writeText(this.state.created.token)
+      Toast.success('Token copied')
+    }
+
+    dismiss() {
+      this.state.created = null
+    }
+
+    async remove(id, name) {
+      const ok = await Dialog.confirm({ title: `Delete key "${name}"?`, text: 'Scripts using it stop working right away.', confirm: 'Delete', danger: true })
+      if (!ok) return
+      await App.api('key/delete', { id })
+      this.state.keys = this.state.keys.filter((k) => k.id !== id)
+      Toast.success('Key deleted')
+    }
+  }
+</script>
+
+<style>
+  .create {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+    padding: var(--space-5);
+
+    .field {
+      flex: 1 1 280px;
+    }
+  }
+
+  .token {
+    display: grid;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+    padding: var(--space-5);
+    border-color: var(--color-success);
+    background: var(--color-success-soft);
+
+    .token-row {
+      display: flex;
+      gap: var(--space-2);
+
+      .code {
+        flex: 1;
+        padding: var(--space-2) var(--space-3);
+        background: var(--color-bg-raised);
+      }
+    }
+
+    .example {
+      background: var(--color-bg-raised);
+    }
+  }
+
+  .name {
+    font-weight: var(--weight-semibold);
+  }
+</style>
+
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1>API keys</h1>
+      <p class="sub">Keys let scripts call the <a href="/api">admin API</a> with <code class="inline">Authorization: Bearer ...</code>.</p>
+    </div>
+  </div>
+
+  <div class="card create">
+    <div class="field">
+      <label for="key-name">Name</label>
+      <input class="input" id="key-name" fez:this="name" placeholder="e.g. CMS purge hook" maxlength="100" onkeydown="if (event.key === 'Enter') fez.create()">
+    </div>
+    <div class="segmented" role="group" aria-label="Access">
+      <button type="button" class:on={state.readOnly} onclick="fez.setReadOnly(true)">Read only</button>
+      <button type="button" class:on={!state.readOnly} onclick="fez.setReadOnly(false)">Read and write</button>
+    </div>
+    <button class="btn primary" type="button" onclick="fez.create()" disabled={state.saving}>
+      <ui-icon name="key" size="16"></ui-icon>Create key
+    </button>
+  </div>
+
+  {#if state.created}
+    <div class="card token" fez:in="fly, y=-8, duration=200">
+      <div class="card-title">
+        <span>Key "{state.created.key.name}" created. Copy the token now, it is not shown again.</span>
+        <button class="btn sm ghost" type="button" onclick="fez.dismiss()">Done</button>
+      </div>
+      <div class="token-row">
+        <code class="code">{state.created.token}</code>
+        <button class="btn" type="button" onclick="fez.copy()"><ui-icon name="copy" size="16"></ui-icon>Copy</button>
+      </div>
+      <pre class="code example">curl -X POST {state.origin}/api/cache/purge \
+  -H "Authorization: Bearer {state.created.token}" \
+  -H "Content-Type: application/json" \
+  -d '{'{'}"url": "https://example.com/photo.jpg"{'}'}'</pre>
+    </div>
+  {/if}
+
+  <div class="card">
+    {#if state.loading}
+      <div class="center"><span class="spinner"></span></div>
+    {:else if state.keys.length}
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Name</th><th>Token</th><th>Access</th><th>Created</th><th>Last used</th><th class="shrink"></th></tr></thead>
+          <tbody>
+            {#each state.keys as key (key.id)}
+              <tr>
+                <td class="name">{key.name}</td>
+                <td><code class="inline">{key.prefix}...</code></td>
+                <td>
+                  {#if key.read_only}
+                    <span class="badge">Read only</span>
+                  {:else}
+                    <span class="badge warning">Read and write</span>
+                  {/if}
+                </td>
+                <td class="muted" title="{key.when} by {key.created_by}">{key.created}</td>
+                <td class="muted">{key.used}</td>
+                <td class="shrink"><button class="btn sm icon danger-ghost" type="button" title="Delete" onclick="fez.remove({key.id}, '{key.name}')"><ui-icon name="trash" size="16"></ui-icon></button></td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {:else}
+      <div class="empty"><strong>No API keys</strong><span>Create one for each script, so you can revoke them one by one.</span></div>
+    {/if}
+  </div>
+</div>

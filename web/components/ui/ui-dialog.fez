@@ -1,0 +1,110 @@
+<info>
+  <ul>
+    <li>Confirm dialog, mounted once as <code>window.Dialog</code>; never use native <code>confirm()</code>.</li>
+    <li><code>await Dialog.confirm({ title, text, confirm: 'Delete', danger: true })</code> resolves <code>true</code> or <code>false</code>.</li>
+    <li>Escape and a backdrop click cancel; focus moves to the confirm button and back on close.</li>
+  </ul>
+</info>
+
+<script>
+  class {
+    MOUNT = true
+    GLOBAL = 'Dialog'
+
+    init() {
+      this.state.open = false
+      this.state.title = ''
+      this.state.text = ''
+      this.state.confirmLabel = 'Confirm'
+      this.state.danger = false
+      this.on(document, 'keydown', (event) => {
+        if (this.state.open && event.key === 'Escape') {
+          event.preventDefault()
+          this.close(false)
+        }
+      })
+    }
+
+    confirm({ title = 'Are you sure?', text = '', confirm = 'Confirm', danger = false } = {}) {
+      this.state.resolve?.(false)
+      this.state.returnFocus = document.activeElement
+      this.state.title = title
+      this.state.text = text
+      this.state.confirmLabel = confirm
+      this.state.danger = danger
+      this.state.open = true
+      this.tick().then(() => this.state.confirmButton?.focus())
+      return new Promise((resolve) => (this.state.resolve = resolve))
+    }
+
+    close(value) {
+      if (!this.state.open) return
+      this.state.open = false
+      const resolve = this.state.resolve
+      this.state.resolve = null
+      resolve?.(value)
+      this.state.returnFocus?.focus?.()
+    }
+  }
+</script>
+
+<style>
+  display: contents;
+
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-dialog);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 18vh var(--space-4) var(--space-4);
+    background: var(--color-overlay);
+
+    &.hidden {
+      display: none;
+    }
+  }
+
+  .panel {
+    width: 100%;
+    max-width: 420px;
+    padding: var(--space-6);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-raised);
+    box-shadow: var(--shadow-lg);
+  }
+
+  h2 {
+    font-size: var(--text-lg);
+  }
+
+  .text {
+    margin-top: var(--space-2);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+  }
+
+  .buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    margin-top: var(--space-6);
+  }
+</style>
+
+<div class="backdrop" class:hidden={!state.open} onclick!="fez.close(false)">
+  {#if state.open}
+    <div class="panel" role="alertdialog" aria-modal="true" aria-label={state.title} fez:in="pop">
+      <h2>{state.title}</h2>
+      {#if state.text}
+        <p class="text">{state.text}</p>
+      {/if}
+      <div class="buttons">
+        <button class="btn" type="button" onclick="fez.close(false)">Cancel</button>
+        <button class="btn {state.danger ? 'danger' : 'primary'}" type="button" fez:this="confirmButton" onclick="fez.close(true)">{state.confirmLabel}</button>
+      </div>
+    </div>
+  {/if}
+</div>

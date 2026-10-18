@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Everything that must pass before a commit: Rust fmt/clippy/tests, fez compile, icon set.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+fez compile 'web/components/**/*.fez' > /dev/null
+bin/icons --check

@@ -1,0 +1,125 @@
+<info>
+  <ul>
+    <li>One resize variant of a source image: spinner until loaded, then the output size, weight and format.</li>
+    <li>Props: <code>title</code>, <code>attr</code> (params segment, e.g. <code>w200</code>, <code>c300x200</code>), <code>src</code> (source URL).</li>
+  </ul>
+</info>
+
+<script>
+  class {
+    PROPS = {
+      title: String,
+      attr: String,
+      src: String,
+    }
+
+    init() {
+      this.state.loaded = false
+      this.state.failed = false
+      this.state.meta = ''
+    }
+
+    beforeRender() {
+      const src = (this.props.src || '').replace(/^https:\/\//, '')
+      this.state.url = `/r/${this.props.attr}?${encodeURIComponent(src)}`
+    }
+
+    onRefresh(props, changed) {
+      if ('src' in changed) {
+        this.state.loaded = false
+        this.state.failed = false
+        this.state.meta = ''
+      }
+    }
+
+    async shown(img) {
+      this.state.loaded = true
+      const dims = `${img.naturalWidth}x${img.naturalHeight}`
+      this.state.meta = dims
+      try {
+        // the same Accept an <img> sends in every current browser, so this hits the cache entry shown above
+        const response = await fetch(img.src, { headers: { accept: 'image/avif,image/webp,image/*,*/*;q=0.8' } })
+        const blob = await response.blob()
+        const format = (blob.type.split('/')[1] || '').replace('svg+xml', 'svg').toUpperCase()
+        this.state.meta = `${dims} · ${Fmt.bytes(blob.size)} · ${format}`
+      } catch {}
+    }
+
+    failed() {
+      this.state.failed = true
+    }
+  }
+</script>
+
+<style>
+  .tile {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
+  }
+
+  .head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+  }
+
+  .frame {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 140px;
+    overflow: hidden;
+    border-radius: var(--radius-md);
+  }
+
+  .shot {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    cursor: zoom-in;
+    opacity: 0;
+    transition: opacity 0.3s var(--ease);
+
+    &.on {
+      opacity: 1;
+    }
+  }
+
+  .over {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-danger);
+    font-size: var(--text-sm);
+  }
+
+  .meta {
+    min-height: 18px;
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+</style>
+
+<div class="card tile">
+  <div class="head">
+    <span>{props.title}</span>
+    <code class="badge mono">{props.attr}</code>
+  </div>
+  <a class="frame checker" href={state.url} target="_blank" rel="noopener">
+    <img class="shot" class:on={state.loaded} src={state.url} alt={props.title} onload="fez.shown(this)" onerror="fez.failed()">
+    {#if state.failed}
+      <span class="over">Failed to load</span>
+    {:else if !state.loaded}
+      <span class="over"><span class="spinner"></span></span>
+    {/if}
+  </a>
+  <span class="meta">{state.meta}</span>
+</div>

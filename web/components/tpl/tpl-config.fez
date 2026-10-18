@@ -1,0 +1,283 @@
+<info>
+  <ul>
+    <li>Admin overview: server settings, cache usage, running jobs, referer domains with enable/disable, and clearing the cache.</li>
+    <li>Reads <code>stats/show</code> and <code>referer/list</code>; writes <code>referer/toggle</code> and <code>cache/clear</code>.</li>
+  </ul>
+</info>
+
+<script>
+  class {
+    init() {
+      this.state.loading = true
+      this.state.stats = null
+      this.state.referers = []
+      this.state.busy = ''
+    }
+
+    onMount() {
+      this.load()
+    }
+
+    async load() {
+      try {
+        const [stats, referers] = await Promise.all([App.api('stats/show'), App.api('referer/list')])
+        this.state.stats = stats
+        this.state.referers = referers
+      } finally {
+        this.state.loading = false
+      }
+    }
+
+    beforeRender() {
+      const s = this.state.stats
+      if (!s) return
+      const pct = s.cache.usage_percent
+      this.state.usageTone = pct >= 90 ? 'danger' : pct >= 70 ? 'warning' : 'ok'
+      this.state.usageWidth = `${Math.min(100, pct)}%`
+      this.state.settings = [
+        ['Port', s.settings.port],
+        ['Workers', s.settings.workers],
+        ['Quality', s.settings.quality],
+        ['Max size', `${s.settings.max_size}px`],
+        ['Max age', `${Fmt.number(s.settings.max_age)} s`],
+        ['Max cache', Fmt.bytes(s.settings.max_cache_bytes)],
+        ['Max download', Fmt.bytes(s.settings.max_source_bytes)],
+        ['Allowed sources', s.settings.allowed_domains.length ? s.settings.allowed_domains.join(', ') : 'all domains'],
+        ['Admins', s.settings.admin_emails.join(', ')],
+        ['Version', `${s.version}, up ${Fmt.duration(s.uptime_secs)}`],
+      ]
+    }
+
+    async toggle(domain) {
+      this.state.busy = domain
+      try {
+        const result = await App.api('referer/toggle', { domain })
+        this.state.referers = this.state.referers.map((r) => (r.domain === domain ? { ...r, disabled: result.disabled } : r))
+        Toast.success(`${domain} ${result.disabled ? 'disabled' : 'enabled'}`)
+      } finally {
+        this.state.busy = ''
+      }
+    }
+
+    async clearAll() {
+      const ok = await Dialog.confirm({
+        title: 'Clear the whole cache?',
+        text: 'Every source and variant is deleted; images are fetched and resized again on their next request.',
+        confirm: 'Clear cache',
+        danger: true,
+      })
+      if (!ok) return
+      const { deleted } = await App.api('cache/clear', { period: 'all' })
+      Toast.success(`${Fmt.number(deleted)} cached images removed`)
+      this.load()
+    }
+  }
+</script>
+
+<style>
+  .grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
+
+    @media (max-width: 860px) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .rows {
+    display: grid;
+  }
+
+  .kv {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--color-border);
+    font-size: var(--text-sm);
+
+    &:last-child {
+      border-bottom: 0;
+    }
+
+    .k {
+      color: var(--color-text-muted);
+    }
+
+    .v {
+      min-width: 0;
+      font-family: var(--font-mono);
+      text-align: right;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .usage {
+    display: grid;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+
+    .big {
+      font-size: var(--text-xl);
+      font-weight: var(--weight-bold);
+      font-variant-numeric: tabular-nums;
+    }
+  }
+
+  .bar {
+    height: 10px;
+    overflow: hidden;
+    border-radius: var(--radius-full);
+    background: var(--color-bg-hover);
+
+    .fill {
+      height: 100%;
+      border-radius: var(--radius-full);
+      background: var(--color-success);
+      transition: width 0.3s var(--ease);
+    }
+
+    &.warning .fill {
+      background: var(--color-warning);
+    }
+
+    &.danger .fill {
+      background: var(--color-danger);
+    }
+  }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-3);
+
+    .stat {
+      padding: var(--space-3);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-subtle);
+    }
+
+    .label {
+      color: var(--color-text-muted);
+      font-size: var(--text-xs);
+    }
+
+    .value {
+      font-size: var(--text-lg);
+      font-weight: var(--weight-semibold);
+      font-variant-numeric: tabular-nums;
+    }
+  }
+
+  .danger-zone {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+    border-color: var(--color-danger);
+    background: var(--color-danger-soft);
+
+    p {
+      color: var(--color-text-muted);
+      font-size: var(--text-sm);
+    }
+  }
+
+  .domain {
+    font-family: var(--font-mono);
+  }
+
+  .list-head {
+    margin: 0;
+    padding: var(--space-4) var(--space-5);
+    border-bottom: 1px solid var(--color-border);
+  }
+</style>
+
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1>Config</h1>
+      <p class="sub">Settings, cache usage and the referer domains that use this service.</p>
+    </div>
+    <div class="actions">
+      <button class="btn" type="button" onclick="fez.load()"><ui-icon name="arrows-clockwise" size="16"></ui-icon>Refresh</button>
+    </div>
+  </div>
+
+  {#if state.loading}
+    <div class="center"><span class="spinner"></span></div>
+  {:else if state.stats}
+    <div class="grid">
+      <div class="card pad">
+        <div class="card-title">Cache <a class="small" href="#/cache">Browse cached images</a></div>
+        <div class="usage">
+          <span class="big">{Fmt.bytes(state.stats.cache.bytes)} <span class="muted small">of {Fmt.bytes(state.stats.settings.max_cache_bytes)} ({state.stats.cache.usage_percent}%)</span></span>
+          <div class="bar {state.usageTone}"><div class="fill" style:width={state.usageWidth}></div></div>
+        </div>
+        <div class="stats">
+          <div class="stat"><div class="label">Entries</div><div class="value">{Fmt.number(state.stats.cache.entries)}</div></div>
+          <div class="stat"><div class="label">Average</div><div class="value">{Fmt.bytes(state.stats.cache.average_bytes)}</div></div>
+          <div class="stat"><div class="label">Database</div><div class="value">{Fmt.bytes(state.stats.cache.db_bytes)}</div></div>
+          <div class="stat"><div class="label">Workers busy</div><div class="value">{state.stats.jobs.workers_busy} / {state.stats.settings.workers}</div></div>
+          <div class="stat"><div class="label">Resizes running</div><div class="value">{state.stats.jobs.variants_in_flight}</div></div>
+          <div class="stat"><div class="label">Downloads running</div><div class="value">{state.stats.jobs.sources_in_flight}</div></div>
+        </div>
+      </div>
+      <div class="card pad">
+        <div class="card-title">Server</div>
+        <div class="rows">
+          {#each state.settings as row}
+            <div class="kv"><span class="k">{row[0]}</span><span class="v">{row[1]}</span></div>
+          {/each}
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title list-head">Referers <span class="muted small">{state.referers.length} domains</span></div>
+      {#if state.referers.length}
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Domain</th><th class="num">Requests</th><th>Status</th><th class="shrink"></th></tr></thead>
+            <tbody>
+              {#each state.referers as r}
+                <tr>
+                  <td class="domain">{r.domain}</td>
+                  <td class="num">{Fmt.number(r.total)}</td>
+                  <td>
+                    {#if r.disabled}
+                      <span class="badge danger">Disabled</span>
+                    {:else}
+                      <span class="badge success">Enabled</span>
+                    {/if}
+                  </td>
+                  <td class="shrink">
+                    {#if r.domain !== 'direct' && r.domain !== 'hidden'}
+                      <button class="btn sm {r.disabled ? '' : 'danger-ghost'}" type="button" disabled={state.busy === r.domain} onclick="fez.toggle('{r.domain}')">{r.disabled ? 'Enable' : 'Disable'}</button>
+                    {/if}
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {:else}
+        <div class="empty"><strong>No traffic yet</strong><span>Domains appear here once pages embed resized images.</span></div>
+      {/if}
+    </div>
+
+    <div class="card danger-zone">
+      <div>
+        <strong>Clear all cache</strong>
+        <p>Deletes every cached source and variant. Use the cache page to clear by age.</p>
+      </div>
+      <button class="btn danger" type="button" onclick="fez.clearAll()"><ui-icon name="trash" size="16"></ui-icon>Clear cache</button>
+    </div>
+  {/if}
+</div>

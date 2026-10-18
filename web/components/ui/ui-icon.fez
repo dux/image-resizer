@@ -1,0 +1,45 @@
+<info>
+  <ul>
+    <li>Phosphor icon as inline SVG in <code>currentColor</code>, from <code>web/lib/icons.js</code>.</li>
+    <li>Props: <code>name</code>, <code>size</code> (px, default 18), <code>weight</code> (<code>regular</code> or <code>fill</code>).</li>
+    <li>Run <code>bin/icons</code> after using a new name.</li>
+  </ul>
+</info>
+
+<script>
+  class {
+    NAME = 'span'
+
+    PROPS = {
+      name: String,
+      size: { type: Number, default: 18 },
+      weight: { type: String, default: 'regular', enum: ['regular', 'fill'] },
+    }
+
+    beforeRender() {
+      const icons = window.ICONS || {}
+      const name = this.props.name || ''
+      this.state.svg = icons[this.props.weight === 'fill' ? `${name}-fill` : name] || icons[name] || ''
+      if (!this.state.svg && name) console.warn(`ui-icon: unknown icon "${name}", run bin/icons`)
+    }
+  }
+</script>
+
+<style>
+  display: inline-flex;
+  flex-shrink: 0;
+  line-height: 0;
+  vertical-align: middle;
+
+  .glyph {
+    display: block;
+
+    svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+  }
+</style>
+
+<span class="glyph" style:width={props.size + 'px'} style:height={props.size + 'px'} aria-hidden="true">{@html state.svg}</span>

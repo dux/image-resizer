@@ -1,0 +1,358 @@
+<info>
+  <ul>
+    <li>Landing page: what the service does, a live URL builder and the URL format reference.</li>
+  </ul>
+</info>
+
+<script>
+  const SAMPLE = 'upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Camponotus_flavomarginatus_ant.jpg/1280px-Camponotus_flavomarginatus_ant.jpg'
+
+  const EXAMPLES = [
+    ['/r/w300?example.com/photo.jpg', 'Width 300, height follows'],
+    ['/r/h200?example.com/photo.jpg', 'Height 200, width follows'],
+    ['/r/w300x200?example.com/photo.jpg', 'Fit inside 300x200, aspect kept'],
+    ['/r/c300x200?example.com/photo.jpg', 'Crop to exactly 300x200 (30% top focus)'],
+    ['/r/c300?example.com/photo.jpg', 'Square crop'],
+    ['/r/w300.png?example.com/photo.jpg', 'Forced PNG, no Accept negotiation'],
+    ['/r.webp?example.com/photo.jpg', 'Format only, original size'],
+    ['/resize?src=https://example.com/photo.jpg&w=200', 'Legacy query form'],
+  ]
+
+  const STEP = [
+    ['/r/w600?example.com/part.step', 'Snapshot render (iso camera, transparent)'],
+    ['/r/w600&cam=top?example.com/part.step', 'Camera preset or x,y,z vector'],
+    ['/r/w600&bg=white.png?example.com/part.step', 'Opaque white background, PNG'],
+    ['/r.glb?example.com/part.step', 'GLB for three.js (CORS open)'],
+  ]
+
+  const FEATURES = [
+    { icon: 'lightning', title: 'AVIF first', text: 'AVIF, then WebP, then the original format, picked from the Accept header.' },
+    { icon: 'stack', title: 'Two cache layers', text: 'Each source is downloaded once; every size is cut from the cached source.' },
+    { icon: 'arrows-clockwise', title: 'Never blocks', text: 'Slow sources answer a spinner after 10s while the job finishes in the background.' },
+    { icon: 'cube', title: 'STEP models', text: 'CAD files render to images from any camera, or convert to GLB for three.js.' },
+  ]
+
+  class {
+    init() {
+      this.state.examples = EXAMPLES
+      this.state.step = STEP
+      this.state.features = FEATURES
+      this.state.mode = 'w'
+      this.state.format = ''
+      this.state.url = ''
+      this.state.loaded = false
+      this.build()
+    }
+
+    onMount() {
+      this.state.srcInput.value = SAMPLE
+      this.state.sizeInput.value = '600'
+      this.build()
+    }
+
+    setMode(mode) {
+      this.state.mode = mode
+      this.build()
+    }
+
+    setFormat(format) {
+      this.state.format = format
+      this.build()
+    }
+
+    build() {
+      const src = (this.state.srcInput?.value || SAMPLE).trim().replace(/^https:\/\//, '')
+      const size = (this.state.sizeInput?.value || '600').trim().replace(/[^0-9x]/g, '') || '600'
+      const ext = this.state.format ? `.${this.state.format}` : ''
+      const url = `/r/${this.state.mode}${size}${ext}?${src}`
+      if (url !== this.state.url) {
+        this.state.url = url
+        this.state.loaded = false
+      }
+    }
+
+    shown() {
+      this.state.loaded = true
+    }
+
+    async copy() {
+      await navigator.clipboard.writeText(window.location.origin + this.state.url)
+      Toast.success('URL copied')
+    }
+  }
+</script>
+
+<style>
+  .hero {
+    display: grid;
+    gap: var(--space-3);
+    margin: var(--space-6) 0 var(--space-8);
+    text-align: center;
+
+    h1 {
+      font-size: var(--text-2xl);
+      font-weight: var(--weight-bold);
+      letter-spacing: -0.02em;
+    }
+
+    .lead {
+      max-width: 620px;
+      margin: 0 auto;
+      color: var(--color-text-muted);
+      font-size: var(--text-lg);
+    }
+
+    .cta {
+      justify-content: center;
+      margin-top: var(--space-3);
+    }
+  }
+
+  .features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--space-4);
+    margin-bottom: var(--space-8);
+  }
+
+  .feature {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-5);
+
+    .feature-icon {
+      display: inline-flex;
+      width: fit-content;
+      padding: var(--space-2);
+      border-radius: var(--radius-md);
+      background: var(--color-accent-soft);
+      color: var(--color-accent);
+    }
+
+    h3 {
+      font-size: var(--text-md);
+    }
+
+    p {
+      color: var(--color-text-muted);
+      font-size: var(--text-sm);
+    }
+  }
+
+  .builder {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-6);
+    margin-bottom: var(--space-8);
+    padding: var(--space-6);
+
+    @media (max-width: 860px) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .controls {
+    display: grid;
+    align-content: start;
+    justify-items: start;
+    gap: var(--space-4);
+
+    .field, .result {
+      width: 100%;
+    }
+  }
+
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .size {
+    width: 120px;
+  }
+
+  .result {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+
+    .code {
+      flex: 1;
+      padding: var(--space-2) var(--space-3);
+    }
+  }
+
+  .preview {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 260px;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+
+    .shot {
+      display: block;
+      max-width: 100%;
+      max-height: 420px;
+      opacity: 0;
+      transition: opacity 0.3s var(--ease);
+
+      &.on {
+        opacity: 1;
+      }
+    }
+
+    .wait {
+      position: absolute;
+    }
+  }
+
+  .ref {
+    display: grid;
+    align-items: start;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
+
+    @media (max-width: 860px) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .examples {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .example {
+    display: grid;
+    gap: 2px;
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--color-border);
+
+    &:last-child {
+      border-bottom: 0;
+    }
+
+    .ex-url {
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      word-break: break-all;
+    }
+
+    .ex-text {
+      color: var(--color-text-muted);
+      font-size: var(--text-xs);
+    }
+  }
+
+  .formats {
+    font-size: var(--text-sm);
+
+    p {
+      margin-bottom: var(--space-3);
+      color: var(--color-text-muted);
+    }
+  }
+</style>
+
+<div class="page">
+  <section class="hero">
+    <h1>Resize images by URL</h1>
+    <p class="lead">Put a size in front of any image URL. You get it back resized, cropped or converted, cached, and in the smallest format the browser understands.</p>
+    <div class="actions cta">
+      <a class="btn primary" href="#/demo"><ui-icon name="flask" size="16"></ui-icon>Open the demo</a>
+      <a class="btn" href="#builder"><ui-icon name="link" size="16"></ui-icon>Build a URL</a>
+    </div>
+  </section>
+
+  <section class="features">
+    {#each state.features as feature}
+      <div class="card feature">
+        <span class="feature-icon"><ui-icon name={feature.icon} size="20"></ui-icon></span>
+        <h3>{feature.title}</h3>
+        <p>{feature.text}</p>
+      </div>
+    {/each}
+  </section>
+
+  <section class="card builder" id="builder">
+    <div class="controls">
+      <div class="card-title">URL builder</div>
+      <div class="field">
+        <label for="home-src">Image URL</label>
+        <input class="input" id="home-src" fez:this="srcInput" placeholder="example.com/photo.jpg" onchange="fez.build()" onkeyup="fez.build()">
+      </div>
+      <div class="row">
+        <div class="segmented" role="group" aria-label="Resize mode">
+          <button type="button" class:on={state.mode === 'w'} onclick="fez.setMode('w')">Width</button>
+          <button type="button" class:on={state.mode === 'h'} onclick="fez.setMode('h')">Height</button>
+          <button type="button" class:on={state.mode === 'c'} onclick="fez.setMode('c')">Crop</button>
+        </div>
+        <input class="input size" fez:this="sizeInput" placeholder="300 or 300x200" aria-label="Size" onkeyup="fez.build()">
+      </div>
+      <div class="segmented" role="group" aria-label="Format">
+        <button type="button" class:on={state.format === ''} onclick="fez.setFormat('')">Auto</button>
+        <button type="button" class:on={state.format === 'avif'} onclick="fez.setFormat('avif')">AVIF</button>
+        <button type="button" class:on={state.format === 'webp'} onclick="fez.setFormat('webp')">WebP</button>
+        <button type="button" class:on={state.format === 'jpg'} onclick="fez.setFormat('jpg')">JPEG</button>
+        <button type="button" class:on={state.format === 'png'} onclick="fez.setFormat('png')">PNG</button>
+      </div>
+      <div class="result">
+        <code class="code">{state.url}</code>
+        <button class="btn icon" type="button" title="Copy URL" onclick="fez.copy()"><ui-icon name="copy" size="16"></ui-icon></button>
+        <a class="btn icon" href={state.url} target="_blank" rel="noopener" title="Open"><ui-icon name="arrow-square-out" size="16"></ui-icon></a>
+      </div>
+    </div>
+    <div class="preview checker">
+      {#if !state.loaded}
+        <span class="spinner wait"></span>
+      {/if}
+      <img class="shot" class:on={state.loaded} src={state.url} alt="Preview" onload="fez.shown()" onerror="fez.shown()">
+    </div>
+  </section>
+
+  <section class="ref">
+    <div class="card pad">
+      <div class="card-title">URL format <span class="badge mono">/r/{'{'}params{'}'}?{'{'}source{'}'}</span></div>
+      <div class="examples">
+        {#each state.examples as ex}
+          <div class="example">
+            <span class="ex-url">{ex[0]}</span>
+            <span class="ex-text">{ex[1]}</span>
+          </div>
+        {/each}
+      </div>
+    </div>
+    <div class="card pad formats">
+      <div class="card-title">Formats</div>
+      <p>Without a forced extension the output follows the Accept header, and the response says <code class="inline">Vary: Accept</code>.</p>
+      <table class="table">
+        <thead><tr><th>Client accepts</th><th>Output</th></tr></thead>
+        <tbody>
+          <tr><td>image/avif</td><td>AVIF</td></tr>
+          <tr><td>image/webp</td><td>WebP</td></tr>
+          <tr><td>neither</td><td>JPEG or PNG</td></tr>
+          <tr><td>GIF source</td><td>GIF</td></tr>
+          <tr><td>SVG source</td><td>SVG as is</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card pad">
+    <div class="card-title">STEP (CAD) models <span class="badge">.step / .stp</span></div>
+    <div class="examples">
+      {#each state.step as ex}
+        <div class="example">
+          <span class="ex-url">{ex[0]}</span>
+          <span class="ex-text">{ex[1]}</span>
+        </div>
+      {/each}
+    </div>
+  </section>
+</div>

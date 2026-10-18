@@ -1,0 +1,278 @@
+<info>
+  <ul>
+    <li>API explorer at <code>/api</code>, built from <code>sys/schema</code>: actions by group, their auth, params and output schemas, and a form to call them.</li>
+    <li>Calls go out with the browser session, so admin actions work once signed in.</li>
+  </ul>
+</info>
+
+<script>
+  /** Rows for a params table from a JSON schema object. */
+  function fields(schema) {
+    const required = new Set(schema.required || [])
+    return Object.entries(schema.properties || {}).map(([name, spec]) => {
+      let type = spec.type
+      if (Array.isArray(type)) type = type.filter((t) => t !== 'null').join(' | ') + (type.includes('null') ? '?' : '')
+      return { name, type: type || 'object', doc: spec.description || '', required: required.has(name) }
+    })
+  }
+
+  function skeleton(rows) {
+    const body = {}
+    for (const row of rows) {
+      if (!row.required) continue
+      body[row.name] = row.type.startsWith('integer') ? 0 : row.type.startsWith('boolean') ? false : ''
+    }
+    return JSON.stringify(body, null, 2)
+  }
+
+  class {
+    init() {
+      this.state.loading = true
+      this.state.groups = []
+      this.state.selected = null
+      this.state.result = ''
+      this.state.running = false
+    }
+
+    async onMount() {
+      try {
+        const actions = await App.api('sys/schema')
+        const groups = {}
+        for (const action of actions) {
+          const group = action.path.split('/')[0]
+          ;(groups[group] ||= []).push({ ...action, fields: fields(action.params), output_text: JSON.stringify(action.output, null, 2) })
+        }
+        this.state.groups = Object.entries(groups).map(([name, items]) => ({ name, items }))
+        this.state.loading = false
+        const wanted = window.location.hash.replace(/^#/, '')
+        this.select(actions.find((a) => a.path === wanted)?.path || actions[0]?.path)
+      } finally {
+        this.state.loading = false
+      }
+    }
+
+    select(path) {
+      for (const group of this.state.groups) {
+        const found = group.items.find((item) => item.path === path)
+        if (found) {
+          this.state.selected = found
+          this.state.result = ''
+          window.history.replaceState(null, '', `/api#${path}`)
+          this.tick().then(() => {
+            if (this.state.body) this.state.body.value = skeleton(found.fields)
+          })
+        }
+      }
+    }
+
+    async run() {
+      let params
+      try {
+        params = JSON.parse(this.state.body.value || '{}')
+      } catch (error) {
+        Toast.error(`Params are not valid JSON: ${error.message}`)
+        return
+      }
+      this.state.running = true
+      try {
+        const response = await fetch(`/api/${this.state.selected.path}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(params),
+          credentials: 'same-origin',
+        })
+        this.state.result = JSON.stringify(await response.json(), null, 2)
+      } catch (error) {
+        this.state.result = String(error)
+      } finally {
+        this.state.running = false
+      }
+    }
+  }
+</script>
+
+<style>
+  .layout {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-5);
+
+    @media (max-width: 860px) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .nav {
+    position: sticky;
+    top: calc(var(--nav-height) + var(--space-4));
+    padding: var(--space-3);
+
+    .group-name {
+      padding: var(--space-3) var(--space-2) var(--space-1);
+      color: var(--color-text-subtle);
+      font-size: var(--text-xs);
+      font-weight: var(--weight-semibold);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+
+      &:first-child {
+        padding-top: 0;
+      }
+    }
+
+    .item {
+      display: block;
+      width: 100%;
+      padding: 6px var(--space-2);
+      border: 0;
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--color-text);
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      text-align: left;
+      cursor: pointer;
+
+      &:hover {
+        background: var(--color-bg-hover);
+      }
+
+      &.on {
+        background: var(--color-accent-soft);
+        color: var(--color-link);
+      }
+    }
+  }
+
+  .detail {
+    display: grid;
+    gap: var(--space-5);
+    padding: var(--space-6);
+  }
+
+  .title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+
+    h2 {
+      margin-right: var(--space-2);
+      font-family: var(--font-mono);
+      font-size: var(--text-lg);
+    }
+  }
+
+  .doc {
+    color: var(--color-text-muted);
+  }
+
+  h3 {
+    margin-bottom: var(--space-2);
+    font-size: var(--text-sm);
+  }
+
+  .req {
+    color: var(--color-danger);
+  }
+
+  .run {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  details summary {
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    cursor: pointer;
+  }
+
+  .result {
+    max-height: 480px;
+    overflow: auto;
+  }
+
+  .schema {
+    max-height: 360px;
+    margin-top: var(--space-2);
+    overflow: auto;
+  }
+</style>
+
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1>API</h1>
+      <p class="sub">Every action is <code class="inline">POST /api/&#123;group&#125;/&#123;action&#125;</code> with flat JSON or form params, answered in one envelope. Admin actions take the session cookie or <code class="inline">Authorization: Bearer irk_...</code>.</p>
+    </div>
+  </div>
+
+  {#if state.loading}
+    <div class="center"><span class="spinner"></span></div>
+  {:else}
+    <div class="layout">
+      <nav class="card nav">
+        {#each state.groups as group}
+          <div class="group-name">{group.name}</div>
+          {#each group.items as item}
+            <button class="item" class:on={state.selected && state.selected.path === item.path} type="button" onclick="fez.select('{item.path}')">{item.path}</button>
+          {/each}
+        {/each}
+      </nav>
+
+      {#if state.selected}
+        <section class="card detail">
+          <div>
+            <div class="title">
+              <h2>{state.selected.path}</h2>
+              <span class="badge {state.selected.auth === 'public' ? 'success' : state.selected.auth === 'session' ? 'warning' : 'accent'}">{state.selected.auth}</span>
+              <span class="badge">{state.selected.write ? 'write' : 'read'}</span>
+            </div>
+            <p class="doc">{state.selected.doc}</p>
+          </div>
+
+          <div>
+            <h3>Params</h3>
+            {#if state.selected.fields.length}
+              <div class="table-wrap">
+                <table class="table">
+                  <thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead>
+                  <tbody>
+                    {#each state.selected.fields as field}
+                      <tr>
+                        <td class="mono">{field.name}{#if field.required}<span class="req"> *</span>{/if}</td>
+                        <td class="mono muted">{field.type}</td>
+                        <td class="muted">{field.doc}</td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+            {:else}
+              <p class="muted small">None.</p>
+            {/if}
+          </div>
+
+          <div class="run">
+            <h3>Try it</h3>
+            <textarea class="input" fez:this="body" rows="5" spellcheck="false" aria-label="Params JSON"></textarea>
+            <div class="actions">
+              <button class="btn primary" type="button" onclick="fez.run()" disabled={state.running}>
+                <ui-icon name="play" size="16"></ui-icon>Send
+              </button>
+            </div>
+            {#if state.result}
+              <pre class="code result">{state.result}</pre>
+            {/if}
+          </div>
+
+          <details>
+            <summary>Output schema</summary>
+            <pre class="code schema">{state.selected.output_text}</pre>
+          </details>
+        </section>
+      {/if}
+    </div>
+  {/if}
+</div>

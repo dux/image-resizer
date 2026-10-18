@@ -1,0 +1,172 @@
+<info>
+  <ul>
+    <li>Live server log over the <code>/admin/logs</code> WebSocket: the last 1000 lines, then every new line.</li>
+    <li>Pause buffers incoming lines, Clear empties the view, the view keeps the newest 5000 lines and reconnects after a drop.</li>
+    <li>Lines are appended to the DOM directly (<code>fez:keep</code> container), so a busy log never re-renders the page.</li>
+  </ul>
+</info>
+
+<script>
+  const MAX_LINES = 5000
+
+  function escape(text) {
+    return text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+  }
+
+  function highlight(line) {
+    return escape(line)
+      .replace(/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2})/, '<span class="t">$1</span>')
+      .replace(/\b(ERROR|error|failed|FAIL)\b/g, '<span class="e">$1</span>')
+      .replace(/\b(WARN|warning)\b/g, '<span class="w">$1</span>')
+      .replace(/\b(INFO)\b/g, '<span class="i">$1</span>')
+  }
+
+  class {
+    init() {
+      this.state.status = 'connecting'
+      this.state.paused = false
+      this.state.follow = true
+      this.state.count = 0
+      this.state.buffer = []
+    }
+
+    onMount() {
+      this.connect()
+      return () => {
+        this.state.closing = true
+        this.state.socket?.close()
+      }
+    }
+
+    connect() {
+      const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const socket = new WebSocket(`${scheme}//${window.location.host}/admin/logs`)
+      this.state.socket = socket
+      this.state.status = 'connecting'
+      socket.onopen = () => (this.state.status = 'connected')
+      socket.onmessage = (event) => this.receive(event.data)
+      socket.onclose = () => {
+        if (this.state.closing) return
+        this.state.status = 'disconnected'
+        this.setTimeout(() => this.connect(), 3000)
+      }
+    }
+
+    receive(data) {
+      const lines = data.split('\n').filter((line) => line.trim())
+      if (this.state.paused) {
+        this.state.buffer.push(...lines)
+        return
+      }
+      this.append(lines)
+    }
+
+    append(lines) {
+      const box = this.state.lines
+      const fragment = document.createDocumentFragment()
+      for (const line of lines) {
+        const row = document.createElement('div')
+        row.className = 'line'
+        row.innerHTML = highlight(line)
+        fragment.append(row)
+      }
+      box.append(fragment)
+      while (box.childElementCount > MAX_LINES) box.firstElementChild.remove()
+      this.state.count = box.childElementCount
+      if (this.state.follow) this.state.scroller.scrollTop = this.state.scroller.scrollHeight
+    }
+
+    togglePause() {
+      this.state.paused = !this.state.paused
+      if (!this.state.paused && this.state.buffer.length) {
+        this.append(this.state.buffer)
+        this.state.buffer = []
+      }
+    }
+
+    toggleFollow() {
+      this.state.follow = !this.state.follow
+      if (this.state.follow) this.state.scroller.scrollTop = this.state.scroller.scrollHeight
+    }
+
+    clear() {
+      this.state.lines.replaceChildren()
+      this.state.count = 0
+    }
+  }
+</script>
+
+<style>
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: var(--radius-full);
+      background: var(--color-warning);
+    }
+
+    &.connected .dot {
+      background: var(--color-success);
+    }
+
+    &.disconnected .dot {
+      background: var(--color-danger);
+    }
+  }
+
+  .console {
+    height: calc(100vh - 260px);
+    min-height: 320px;
+    overflow: auto;
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-lg);
+    background: var(--color-log-bg);
+    color: var(--color-log-text);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.55;
+
+    .line {
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .t { color: var(--color-log-time); }
+    .e { color: var(--color-log-error); }
+    .w { color: var(--color-log-warn); }
+    .i { color: var(--color-log-info); }
+  }
+
+  .count {
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+  }
+</style>
+
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1>Logs</h1>
+      <p class="sub">
+        <span class="status {state.status}"><span class="dot"></span>{state.status === 'connected' ? 'Live' : state.status === 'connecting' ? 'Connecting...' : 'Disconnected, retrying'}</span>
+      </p>
+    </div>
+    <div class="actions">
+      <span class="count">{Fmt.number(state.count)} lines{state.paused && state.buffer.length ? `, ${state.buffer.length} waiting` : ''}</span>
+      <button class="btn" type="button" onclick="fez.toggleFollow()">{state.follow ? 'Auto-scroll on' : 'Auto-scroll off'}</button>
+      <button class="btn" type="button" onclick="fez.togglePause()">
+        <ui-icon name={state.paused ? 'play' : 'pause'} size="16"></ui-icon>{state.paused ? 'Resume' : 'Pause'}
+      </button>
+      <button class="btn" type="button" onclick="fez.clear()"><ui-icon name="broom" size="16"></ui-icon>Clear</button>
+    </div>
+  </div>
+  <div class="console" fez:this="scroller">
+    <div fez:keep="log-lines" fez:this="lines"></div>
+  </div>
+</div>
