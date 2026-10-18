@@ -13,13 +13,12 @@ Everything around it is rebuilt: admin login through AuthCog, a MailCog-style AP
 | 3. Housekeeping | done |
 | 4. API + auth | done; AuthCog flow tested against a mock realm (`tests/api.rs`) |
 | 5. fez SPA | done; every page checked in a browser, light, dark and mobile |
-| 6. Deploy and cutover | files ready (`dboss.yaml`, `config/deploy/remote_before.sh`, `mise.toml`); not deployed |
+| 6. Deploy and cutover | deployed to deb2 under dboss (`WORKERS=2`); STEP tools copied from the Go box |
 
 Open:
 
 * Try the AuthCog sign-in by hand against live `auth.authcog.com` (dev: `http://lvh.me:<port>/login`).
-* Load test Go vs Rust with `oha` on the same URLs, then switch the hosts to the Rust app.
-* Production box: `libvips-dev` (8.16 on Debian 13) and a C toolchain for the build, besides what the Go app already needs.
+* Load test with `oha` on deb2 (both hosts switched 2026-10-18, the Go service is retired).
 
 Found while building, beyond the plan:
 
@@ -200,7 +199,7 @@ dboss.yaml
 mise.toml                    rust toolchain
 bin/check                    fmt, clippy, tests, fez compile, icon set
 bin/icons                    Phosphor SVGs used by ui-icon -> web/lib/icons.js
-config/deploy/remote_before.sh
+config/deploy/                .yaml, local_before.sh, remote_before.sh
 scripts/step2glb             copied from Go
 static/                      test images, random-images.txt
 web/

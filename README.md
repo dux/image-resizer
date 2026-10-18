@@ -140,6 +140,8 @@ The frontend has no build step: `./web/index.html` loads fez from its CDN and ea
 Production runs under [dboss](https://github.com/dux/dboss) and deploys with lux-deploy (`lux-deploy up`).
 
 * `./dboss.yaml` - the process, its hosts and env; `dboss s` runs the same file locally.
+* `./config/deploy/.yaml` - the box (`deb2`, an ssh alias); server-only env such as `WORKERS` goes in its `.env.local` (`lux-deploy env:set`).
+* `./config/deploy/local_before.sh` - stages the git-visible files in `tmp/deploy-src`, so the local cargo `target/` never ships.
 * `./config/deploy/remote_before.sh` - builds `bin/server` on the box against its libvips; Rust comes from `./mise.toml`, the cargo target dir lives in the shared `tmp/` so builds stay incremental.
 * The cache lives in `tmp/`, which lux-deploy links to a shared dir that survives releases.
 

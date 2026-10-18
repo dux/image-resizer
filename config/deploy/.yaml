@@ -1,0 +1,10 @@
+# lux-deploy config. dboss owns routing and supervision - the hostnames and the
+# process list live in ./dboss.yaml, which ships inside the release.
+#
+# `server` is the ssh alias, never the address: the repo is public and the origin
+# sits behind Cloudflare.
+
+server: deb2
+domain: img.sohospot.com
+# staged by local_before.sh
+src: ./tmp/deploy-src
