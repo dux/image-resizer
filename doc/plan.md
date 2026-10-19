@@ -357,9 +357,9 @@ Non-envelope admin routes: `GET /admin/blob/{id}` (cache thumbnails and previews
 * `web/index.html` loads `https://dux.github.io/fez/dist/fez.min.js`, then one `<script fez="/web/components/...fez">` per component, and mounts `<app-shell>`.
 * `/web/*` is served from disk with `Cache-Control: no-cache` and ETags, so a deploy shows at once.
 * Shared code (API client, hash router) lives in `app-shell` as the `App` global, so nothing depends on module imports in runtime-loaded `.fez` (verify what the runtime supports in layer 5 before relying on imports).
-* `app-shell`: boots with `auth/me`, routes `#/<page>?k=v` through `<fez-component name="tpl-<page>">`, shows "Page not found" for unknown pages, shows "Sign in with AuthCog" (plus a dev-login field outside production) on admin pages for non-admins, maps `login_error` to a toast.
+* `app-shell`: boots with `auth/me`, routes `#/<page>?k=v` through `<fez-component name="tpl-<page>">`, shows "Page not found" for unknown pages, shows guests only a sign-in screen ("Image Resizer by @dux", "Sign in with AuthCog"; outside production `/dev/login?email=` signs in by URL) at any address, with no top bar or footer, maps `login_error` to a toast.
 * `App.api(path, params)` returns `data`, throws on error, toasts unless silent; `unauthorized` returns to the sign-in prompt.
-* Nav: Home, Demo for everyone; Config, Cache, Logs, Keys, API for admins; theme toggle (system, light, dark); email and Sign out.
+* Nav (admins only): Home, Demo, Config, Cache, Logs, Keys, API; theme toggle (system, light, dark); email and Sign out.
 * `ui-theme.fez` holds the design tokens and the shared classes (`.card`, `.btn`, `.badge`, `.input`, `.table`, `.segmented`); the Tailwind CDN goes away. Without a bundler, plain elements with these classes beat wrapper components (no attribute forwarding, no extra DOM).
 
 Pages:

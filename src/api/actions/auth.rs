@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::{Action, ApiResult, Auth, Ctx, Out};
 use crate::auth::Via;
-use crate::config::AppEnv;
 
 #[derive(Deserialize, JsonSchema)]
 pub struct Me {}
@@ -15,8 +14,6 @@ pub struct MeOut {
     pub is_admin: bool,
     /// `session` or `key`.
     pub via: Option<&'static str>,
-    /// `/dev/login` is available (not production).
-    pub dev_login: bool,
 }
 
 impl Action for Me {
@@ -41,7 +38,6 @@ impl Action for Me {
             email: ctx.principal.email().map(String::from),
             is_admin: via.is_some(),
             via,
-            dev_login: ctx.app.config.env != AppEnv::Production,
         }
         .into())
     }

@@ -78,7 +78,8 @@ SVG answers carry a sandbox `Content-Security-Policy`, so a remote SVG cannot ru
 
 ## Admin
 
-The admin pages (`#/config`, `#/cache`, `#/logs`, `#/keys`, `/api`) need an AuthCog sign-in from the central realm (`auth.authcog.com`) with an email in `ADMIN_EMAILS` (`./dboss.yaml` sets `rejotl@gmail.com`).
+Every page of the UI (home and demo included) needs an AuthCog sign-in; guests see only a sign-in screen.
+It uses the central realm (`auth.authcog.com`) and accepts only an email in `ADMIN_EMAILS` (`./dboss.yaml` sets `rejotl@gmail.com`).
 The session is a signed cookie; the key is `DATA_DIR/session.key`, and deleting it signs everyone out.
 
 Scripts use API keys created on the Keys page:

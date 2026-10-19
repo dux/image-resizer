@@ -48,7 +48,7 @@ Every answer, success or not:
 |---|---|---|---|---|
 | `sys/health` | Public | no | - | `{status, version, uptime_secs}` |
 | `sys/schema` | Public | no | - | `[{path, doc, auth, write, params, output}]` |
-| `auth/me` | Public | no | - | `{email, is_admin, via, dev_login}` |
+| `auth/me` | Public | no | - | `{email, is_admin, via}` |
 | `auth/logout` | Session | yes | - | `true`, clears the cookie |
 | `demo/random` | Public | no | - | `{url}`: a reachable image from `static/random-images.txt` |
 | `stats/show` | Admin | no | - | `{version, uptime_secs, settings, cache, jobs}` |
