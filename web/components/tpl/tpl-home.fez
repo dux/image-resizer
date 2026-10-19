@@ -1,6 +1,7 @@
 <info>
   <ul>
     <li>Landing page: what the service does, a live URL builder and the URL format reference.</li>
+    <li>For a STEP source the builder previews the model in 3D (<code>step-viewer</code>), with a 3D / Image switch back to the rendered URL.</li>
   </ul>
 </info>
 
@@ -41,6 +42,7 @@
       this.state.format = ''
       this.state.url = ''
       this.state.loaded = false
+      this.state.preview = '3d'
       this.build()
     }
 
@@ -60,8 +62,14 @@
       this.build()
     }
 
+    setPreview(preview) {
+      this.state.preview = preview
+    }
+
     build() {
       const src = (this.state.srcInput?.value || SAMPLE).trim().replace(/^https:\/\//, '')
+      this.state.src = src
+      this.state.isStep = App.isStep(src)
       const size = (this.state.sizeInput?.value || '600').trim().replace(/[^0-9x]/g, '') || '600'
       const ext = this.state.format ? `.${this.state.format}` : ''
       const url = `/r/${this.state.mode}${size}${ext}?${src}`
@@ -284,7 +292,7 @@
     <div class="controls">
       <div class="card-title">URL builder</div>
       <div class="field">
-        <label for="home-src">Image URL</label>
+        <label for="home-src">Image or STEP URL</label>
         <input class="input" id="home-src" fez:this="srcInput" placeholder="example.com/photo.jpg" onchange="fez.build()" onkeyup="fez.build()">
       </div>
       <div class="row">
@@ -302,18 +310,31 @@
         <button type="button" class:on={state.format === 'jpg'} onclick="fez.setFormat('jpg')">JPEG</button>
         <button type="button" class:on={state.format === 'png'} onclick="fez.setFormat('png')">PNG</button>
       </div>
+      {#if state.isStep}
+        <div class="row">
+          <span class="muted small">Preview</span>
+          <div class="segmented" role="group" aria-label="Preview">
+            <button type="button" class:on={state.preview === '3d'} onclick="fez.setPreview('3d')">3D</button>
+            <button type="button" class:on={state.preview === 'image'} onclick="fez.setPreview('image')">Image</button>
+          </div>
+        </div>
+      {/if}
       <div class="result">
         <code class="code">{state.url}</code>
         <button class="btn icon" type="button" title="Copy URL" onclick="fez.copy()"><ui-icon name="copy" size="16"></ui-icon></button>
         <a class="btn icon" href={state.url} target="_blank" rel="noopener" title="Open"><ui-icon name="arrow-square-out" size="16"></ui-icon></a>
       </div>
     </div>
-    <div class="preview checker">
-      {#if !state.loaded}
-        <span class="spinner wait"></span>
-      {/if}
-      <img class="shot" class:on={state.loaded} src={state.url} alt="Preview" onload="fez.shown()" onerror="fez.shown()">
-    </div>
+    {#if state.isStep && state.preview === '3d'}
+      <step-viewer bare src={state.src}></step-viewer>
+    {:else}
+      <div class="preview checker">
+        {#if !state.loaded}
+          <span class="spinner wait"></span>
+        {/if}
+        <img class="shot" class:on={state.loaded} src={state.url} alt="Preview" onload="fez.shown()" onerror="fez.shown()">
+      </div>
+    {/if}
   </section>
 
   <section class="ref">

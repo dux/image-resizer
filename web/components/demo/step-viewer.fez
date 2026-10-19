@@ -1,0 +1,225 @@
+<info>
+  <ul>
+    <li>Interactive 3D view of a STEP source: fetches <code>/r.glb?&lt;src&gt;</code> and shows it in Google's <code>&lt;model-viewer&gt;</code> (drag to rotate, scroll to zoom).</li>
+    <li>Props: <code>src</code> (STEP source URL), <code>bare</code> (just the frame, for a preview inside another card; the GLB link moves into its corner).</li>
+    <li>A 202 answer means the GLB is still converting: it waits <code>Retry-After</code> and asks again. A 422 or a network error shows the error with a Retry button.</li>
+    <li>Parts without a material (step2glb writes none) are shown matte grey instead of the glTF default white metal.</li>
+    <li>The model-viewer script (pinned, from jsdelivr) loads once, on the first STEP preview. The viewer node is created in code inside a <code>fez:keep</code> stage, so a render never resets the model.</li>
+  </ul>
+</info>
+
+<script>
+  const MODEL_VIEWER = 'https://cdn.jsdelivr.net/npm/@google/model-viewer@4.4.0/dist/model-viewer.min.js'
+
+  let viewerScript = null
+
+  /** Loads <model-viewer> once per page; a failed load is retried on the next call. */
+  function loadModelViewer() {
+    viewerScript ||= new Promise((resolve, reject) => {
+      const script = document.createElement('script')
+      script.type = 'module'
+      script.src = MODEL_VIEWER
+      script.onerror = () => {
+        viewerScript = null
+        script.remove()
+        reject(new Error('The 3D viewer could not be loaded.'))
+      }
+      document.head.appendChild(script)
+      customElements.whenDefined('model-viewer').then(resolve)
+    })
+    return viewerScript
+  }
+
+  class {
+    PROPS = {
+      src: String,
+      bare: Boolean,
+    }
+
+    init() {
+      // loading | converting | ready | failed
+      this.state.status = 'loading'
+      this.state.error = ''
+      this.state.run = 0
+    }
+
+    onMount() {
+      return () => this.reset()
+    }
+
+    onRefresh(props, changed) {
+      if ('src' in changed) this.load()
+    }
+
+    get glb() {
+      const src = (this.props.src || '').replace(/^https:\/\//, '')
+      return `/r.glb?${encodeURIComponent(src)}`
+    }
+
+    async load() {
+      this.reset()
+      const run = this.state.run
+      const current = () => run === this.state.run
+      this.state.status = 'loading'
+      try {
+        await loadModelViewer()
+        while (current()) {
+          const response = await fetch(this.glb)
+          if (!current()) return
+          if (response.status === 202) {
+            this.state.status = 'converting'
+            const wait = Number(response.headers.get('retry-after')) || 10
+            await new Promise((resolve) => this.setTimeout(resolve, wait * 1000))
+            continue
+          }
+          if (response.status === 422) throw new Error('Could not convert this STEP file.')
+          if (!response.ok) throw new Error(`Could not load the model (HTTP ${response.status}).`)
+          const blob = await response.blob()
+          if (current()) this.show(URL.createObjectURL(blob))
+          return
+        }
+      } catch (error) {
+        if (!current()) return
+        this.state.error = error.message === 'Failed to fetch' ? 'The server is not reachable.' : error.message
+        this.state.status = 'failed'
+      }
+    }
+
+    show(url) {
+      this.state.objectUrl = url
+      const viewer = document.createElement('model-viewer')
+      for (const name of ['camera-controls', 'auto-rotate']) viewer.setAttribute(name, '')
+      viewer.setAttribute('touch-action', 'pan-y')
+      viewer.setAttribute('environment-image', 'neutral')
+      viewer.setAttribute('shadow-intensity', '1')
+      viewer.setAttribute('alt', '3D model of the STEP source')
+      viewer.style.cssText = 'width: 100%; height: 100%; --poster-color: transparent;'
+      viewer.addEventListener('load', () => {
+        this.matte(viewer)
+        this.state.status = 'ready'
+      })
+      viewer.addEventListener('error', () => {
+        this.state.error = 'The model could not be displayed.'
+        this.state.status = 'failed'
+      })
+      viewer.src = url
+      this.state.stage.replaceChildren(viewer)
+    }
+
+    /**
+     * step2glb writes no material, so parts fall back to the glTF default (white, fully metallic,
+     * fully rough) and render as a flat white shape. Only that default becomes matte grey; real
+     * colors from the STEP file stay.
+     */
+    matte(viewer) {
+      for (const material of viewer.model?.materials || []) {
+        const pbr = material.pbrMetallicRoughness
+        const plain = pbr.metallicFactor === 1 && pbr.roughnessFactor === 1 && !pbr.baseColorTexture?.texture && pbr.baseColorFactor.every((v) => v === 1)
+        if (!plain) continue
+        pbr.setBaseColorFactor([0.45, 0.45, 0.47, 1])
+        pbr.setMetallicFactor(0)
+        pbr.setRoughnessFactor(0.4)
+      }
+    }
+
+    /** Drops the shown model and cancels a pending fetch or retry. */
+    reset() {
+      this.state.run++
+      if (this.state.objectUrl) URL.revokeObjectURL(this.state.objectUrl)
+      this.state.objectUrl = null
+      this.state.stage?.replaceChildren()
+    }
+  }
+</script>
+
+<style>
+  .sv-card {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
+
+    .card-title {
+      margin-bottom: 0;
+    }
+  }
+
+  .sv-frame {
+    position: relative;
+    height: 420px;
+    overflow: hidden;
+    border-radius: var(--radius-md);
+    background: var(--color-bg-subtle);
+
+    @media (max-width: 760px) {
+      height: 320px;
+    }
+  }
+
+  .sv-bare .sv-frame {
+    border: 1px solid var(--color-border);
+  }
+
+  .sv-corner {
+    position: absolute;
+    top: var(--space-3);
+    right: var(--space-3);
+    z-index: 1;
+  }
+
+  .sv-stage {
+    width: 100%;
+    height: 100%;
+  }
+
+  .sv-over {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    text-align: center;
+  }
+
+  .sv-error {
+    color: var(--color-danger);
+    font-size: var(--text-sm);
+  }
+</style>
+
+<div class={props.bare ? 'sv-bare' : 'card sv-card'}>
+  {#unless props.bare}
+    <div class="card-title small">
+      <span>3D model</span>
+      <a class="btn sm" href={glb} target="_blank" rel="noopener" title="Open the GLB">
+        <ui-icon name="arrow-square-out" size="14"></ui-icon>
+        GLB
+      </a>
+    </div>
+  {/unless}
+  <div class="sv-frame">
+    <div class="sv-stage" fez:this="stage" fez:keep="stage"></div>
+    {#if props.bare}
+      <a class="btn sm sv-corner" href={glb} target="_blank" rel="noopener" title="Open the GLB">
+        <ui-icon name="arrow-square-out" size="14"></ui-icon>
+        GLB
+      </a>
+    {/if}
+    {#if state.status === 'failed'}
+      <div class="sv-over">
+        <span class="sv-error">{state.error}</span>
+        <button class="btn sm" type="button" onclick="fez.load()">
+          <ui-icon name="arrows-clockwise" size="14"></ui-icon>
+          Retry
+        </button>
+      </div>
+    {:else if state.status !== 'ready'}
+      <div class="sv-over">
+        <span class="spinner"></span>
+        <span class="muted small">{state.status === 'converting' ? 'Converting STEP to GLB...' : 'Loading model...'}</span>
+      </div>
+    {/if}
+  </div>
+</div>

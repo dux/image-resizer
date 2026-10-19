@@ -5,7 +5,7 @@
     <li>Routes are <code>#/&lt;page&gt;?k=v</code>; the page is <code>tpl-&lt;page&gt;</code>, mounted through <code>&lt;fez-component&gt;</code> with the query as props. The <code>/api</code> path renders <code>api-explorer</code>. A plain <code>#anchor</code> is not a route.</li>
     <li>The page sits in a <code>.pjax</code> container: path links (<code>/api</code>, <code>/#/demo</code>) go through <code>Fez.pjax</code>, which keeps this instance, so the location is re-read on <code>pjax:render</code> as well as on <code>hashchange</code>.</li>
     <li><code>await App.api('cache/list', { page: 2 })</code> returns <code>data</code>; <code>{ envelope: true }</code> returns the whole envelope (for <code>meta</code>). Errors throw and toast unless <code>{ silent: true }</code>; <code>unauthorized</code> drops the admin session.</li>
-    <li><code>App.go(page, query)</code>, <code>App.href(page, query)</code>, <code>App.signIn()</code>, <code>App.signOut()</code>.</li>
+    <li><code>App.go(page, query)</code>, <code>App.href(page, query)</code>, <code>App.signIn()</code>, <code>App.signOut()</code>, <code>App.isStep(src)</code>.</li>
   </ul>
 </info>
 
@@ -26,6 +26,8 @@
   }
 
   const THEMES = { system: { icon: 'monitor' }, light: { icon: 'sun' }, dark: { icon: 'moon' } }
+
+  const STEP_PATH = /\.(step|stp)$/i
 
   const LOGO = '<svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#2563eb"/><path d="M8 10h3l2-2h6l2 2h3c1.1 0 2 .9 2 2v10c0 1.1-.9 2-2 2H8c-1.1 0-2-.9-2-2V12c0-1.1.9-2 2-2z" fill="#fff"/><circle cx="16" cy="17" r="4" fill="#2563eb"/><circle cx="16" cy="17" r="2" fill="#fff"/></svg>'
 
@@ -134,6 +136,15 @@
         this.sync()
       } else {
         window.location.hash = target
+      }
+    }
+
+    /** Same rule as the server's `step::is_step_source`: the extension of the URL path, so `a.step?v=1` counts. */
+    isStep(src) {
+      try {
+        return STEP_PATH.test(new URL(/^https?:\/\//i.test(src) ? src : `https://${src}`).pathname)
+      } catch {
+        return false
       }
     }
 

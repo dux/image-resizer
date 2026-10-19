@@ -1,6 +1,7 @@
 <info>
   <ul>
     <li>Demo: one source image (prop <code>src</code> from <code>#/demo?src=...</code>) shown at several widths, crops and heights.</li>
+    <li>A <code>.step</code> / <code>.stp</code> source gets an interactive <code>step-viewer</code> in place of the Original card; the tiles show f3d renders.</li>
     <li>Without <code>src</code> it asks <code>demo/random</code> for a reachable sample and replaces the route.</li>
   </ul>
 </info>
@@ -21,6 +22,10 @@
       this.state.groups = GROUPS
       this.state.picking = false
       this.state.originalLoaded = false
+    }
+
+    beforeRender() {
+      this.state.isStep = App.isStep(this.props.src || '')
     }
 
     onRefresh(props, changed) {
@@ -61,6 +66,14 @@
 
     @media (max-width: 760px) {
       grid-template-columns: minmax(0, 1fr);
+    }
+
+    &.step {
+      grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+
+      @media (max-width: 760px) {
+        grid-template-columns: minmax(0, 1fr);
+      }
     }
   }
 
@@ -136,10 +149,10 @@
     </div>
   </div>
 
-  <section class="source">
+  <section class="source" class:step={state.isStep}>
     <div class="card form">
       <div class="field">
-        <label for="demo-src">Image URL</label>
+        <label for="demo-src">Image or STEP URL</label>
         <input class="input" id="demo-src" fez:this="input" placeholder="https://example.com/image.jpg" onkeydown="if (event.key === 'Enter') fez.load()">
       </div>
       <div class="actions">
@@ -157,17 +170,21 @@
         <p class="current">Source: <a href={props.src} target="_blank" rel="noopener">{props.src}</a></p>
       {/if}
     </div>
-    <div class="card original">
-      <div class="card-title small">Original</div>
-      <div class="original-frame checker">
-        {#if props.src}
-          {#if !state.originalLoaded}
-            <span class="spinner wait"></span>
+    {#if state.isStep}
+      <step-viewer src={props.src}></step-viewer>
+    {:else}
+      <div class="card original">
+        <div class="card-title small">Original</div>
+        <div class="original-frame checker">
+          {#if props.src}
+            {#if !state.originalLoaded}
+              <span class="spinner wait"></span>
+            {/if}
+            <img class="original-img" class:on={state.originalLoaded} src={props.src} alt="Original" onload="fez.originalShown()" onerror="fez.originalShown()">
           {/if}
-          <img class="original-img" class:on={state.originalLoaded} src={props.src} alt="Original" onload="fez.originalShown()" onerror="fez.originalShown()">
-        {/if}
+        </div>
       </div>
-    </div>
+    {/if}
   </section>
 
   {#if props.src}

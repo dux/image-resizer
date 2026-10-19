@@ -208,7 +208,7 @@ web/
   components/app/            app-shell (window.App: router, API client, nav), api-explorer
   components/tpl/            tpl-home, tpl-demo, tpl-config, tpl-cache, tpl-logs, tpl-keys
   components/ui/             ui-theme (tokens + .card/.btn/.badge/.input/.table classes), ui-icon, ui-toast, ui-dialog
-  components/demo/           img-preview
+  components/demo/           img-preview, step-viewer
 src/
   main.rs                    clap: start, help
   config.rs                  env -> Config, validated once, fail fast
@@ -364,8 +364,9 @@ Non-envelope admin routes: `GET /admin/blob/{id}` (cache thumbnails and previews
 
 Pages:
 
-* `tpl-home` - landing with the URL format reference and live examples.
+* `tpl-home` - landing with the URL format reference and live examples; for a STEP source the URL builder previews the model in 3D (`step-viewer bare`) with a 3D / Image switch.
 * `tpl-demo` - source URL input, Random image (`demo/random`), original plus `img-preview` cards for w100/200/300, c300, c300x200, c200x300, h300/200/100, each with spinner, fade-in, size in KB, click to open.
+  A `.step`/`.stp` source (`App.isStep`: the URL path extension, as the server's `step::is_step_source`, so `a.step?v=1` counts) shows `step-viewer` instead of the original: `/r.glb` in `<model-viewer>` (pinned, from jsdelivr, loaded on first use), retrying while the answer is 202.
 * `tpl-config` - settings, cache size with usage bar, count, average size, referer table with enable/disable toggles, clear cache.
 * `tpl-cache` - paged table (thumbnail, URL, key badge, format badge, size, age, delete), source rows marked, hover preview up to 500px with dimensions, click opens, clear by period, filter by kind and URL.
 * `tpl-logs` - live stream, connection status, pause, clear, auto-scroll, line count, keyword highlighting, 5000-line cap.
