@@ -21,6 +21,8 @@ env:
   APP_HOSTS: img.sohospot.com,resizer.sohotasks.com
   ADMIN_EMAILS: rejotl@gmail.com
   MAX_CACHE_SIZE: 500
+  # deb2 has 2 cores, shared with its other apps (default 5)
+  WORKERS_prod: 2
 
 # the first cargo build of a fresh checkout takes minutes
 health_timeout_dev: 10m
